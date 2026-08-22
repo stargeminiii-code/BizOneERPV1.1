@@ -1,0 +1,8 @@
+{
+  "name": "BIZONE",
+  "description": "Hệ thống quản trị doanh nghiệp Biz One Enterprise ERP - Quản lý Bán hàng, Kho hàng, Khách hàng CRM, Sổ quỹ \u0026 Trợ lý AI chẩn đoán kinh doanh thông minh",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
