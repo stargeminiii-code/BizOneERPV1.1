@@ -1,0 +1,1 @@
+Round 2 implementation is complete on this branch: PostgreSQL customer registration, approval, 7-day trial, login, password-reset OTP, sessions and session revocation. Legacy ERP business repositories and legacy 2FA/audit remain for Round 3.
