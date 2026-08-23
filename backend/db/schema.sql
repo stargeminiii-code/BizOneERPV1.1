@@ -34,11 +34,8 @@ CREATE TABLE IF NOT EXISTS users (
   CONSTRAINT users_username_unique UNIQUE (username)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_idx
-  ON users (LOWER(email)) WHERE email IS NOT NULL;
-
-CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique_idx
-  ON users (phone) WHERE phone IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique_idx ON users (LOWER(email)) WHERE email IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique_idx ON users (phone) WHERE phone IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS subscriptions (
   id UUID PRIMARY KEY,
@@ -51,7 +48,6 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE INDEX IF NOT EXISTS subscriptions_tenant_idx ON subscriptions(tenant_id);
 CREATE INDEX IF NOT EXISTS subscriptions_expiry_idx ON subscriptions(expires_at);
 
@@ -65,7 +61,6 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_agent TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id);
 
 CREATE TABLE IF NOT EXISTS otp_codes (
@@ -80,7 +75,6 @@ CREATE TABLE IF NOT EXISTS otp_codes (
   used_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE INDEX IF NOT EXISTS otp_user_purpose_idx ON otp_codes(user_id, purpose, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS audit_logs (
@@ -96,9 +90,27 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   status TEXT NOT NULL CHECK (status IN ('SUCCESS','FAILED','WARNING')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE INDEX IF NOT EXISTS audit_logs_tenant_idx ON audit_logs(tenant_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS audit_logs_actor_idx ON audit_logs(actor_user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS tenant_registrations (
+  id UUID PRIMARY KEY,
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  registration_code TEXT NOT NULL UNIQUE,
+  company_name TEXT NOT NULL,
+  tax_code TEXT,
+  representative TEXT,
+  address TEXT,
+  admin_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  plan_code TEXT NOT NULL DEFAULT 'TRIAL_7_DAYS',
+  status TEXT NOT NULL DEFAULT 'PENDING_APPROVAL' CHECK (status IN ('PENDING_APPROVAL','APPROVED','REJECTED')),
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  approved_at TIMESTAMPTZ,
+  approved_by UUID,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS tenant_registrations_status_idx ON tenant_registrations(status, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version TEXT PRIMARY KEY,
