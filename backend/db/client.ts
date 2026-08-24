@@ -19,6 +19,9 @@ export const db = connectionString
     })
   : null;
 
+// Backwards-compatible alias used by the repository layer.
+export const pool = db as pg.Pool;
+
 export async function dbQuery<T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
   values: unknown[] = [],
