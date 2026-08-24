@@ -1,0 +1,12 @@
+Build Command:
+bun install && bun run db:migrate && bun run db:seed && bun run build
+
+Start Command:
+bun run start
+
+Required Render environment variables:
+DATABASE_URL
+JWT_SECRET
+SUPER_ADMIN_PHONE
+SUPER_ADMIN_EMAIL
+SUPER_ADMIN_INITIAL_PASSWORD

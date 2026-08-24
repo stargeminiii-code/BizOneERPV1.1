@@ -2,11 +2,28 @@ services:
   - type: web
     name: bizone-erp
     runtime: node
-    plan: starter
+    plan: free
     buildCommand: npm install && npm run build
     startCommand: node dist/server.cjs
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
       - key: JWT_SECRET
         generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_SSL
+        value: "true"
+      - key: DB_POOL_MAX
+        value: "5"
+      - key: APP_URL
+        value: https://wiup.vn
+      - key: API_URL
+        value: https://api.wiup.vn
+      - key: SUPER_ADMIN_PHONE
+        sync: false
+      - key: SUPER_ADMIN_EMAIL
+        sync: false
+      - key: SUPER_ADMIN_INITIAL_PASSWORD
+        sync: false
