@@ -27,7 +27,7 @@ dbSaasRouter.post('/register', async (req, res) => {
       adminEmail: b.adminEmail,
       adminPhone: b.adminPhone || b.phone,
       password: b.adminPassword,
-      planCode: b.planId || b.planCode || 'TRIAL_7_DAYS',
+      planCode: 'FREE',
       notes: b.notes,
     });
     return res.json({ success: true, registration, message: 'Đăng ký thành công. Hồ sơ đang chờ BizOne duyệt.' });
@@ -45,7 +45,7 @@ dbSaasRouter.get('/registrations', dbAuthMiddleware(), requireSuperAdmin, async 
 dbSaasRouter.post('/registrations/:id/approve', dbAuthMiddleware(), requireSuperAdmin, async (req, res) => {
   try {
     const result = await approveRegistration(req.params.id, req.user.uid);
-    return res.json({ success: true, ...result, status: 'active', trialDays: 7, message: 'Đã duyệt tài khoản. Tài khoản khách có thể đăng nhập và được cấp trial 07 ngày.' });
+    return res.json({ success: true, ...result, status: 'active', planCode: 'FREE', message: 'Đã duyệt tài khoản. Tài khoản khách có thể đăng nhập và sử dụng gói Free vĩnh viễn.' });
   } catch (error: any) {
     if (error?.message === 'REGISTRATION_NOT_FOUND') return res.status(404).json({ success: false, error: 'Không tìm thấy hồ sơ đăng ký.' });
     console.error('[DB_SAAS_APPROVE]', error);
@@ -56,7 +56,7 @@ dbSaasRouter.post('/registrations/:id/approve', dbAuthMiddleware(), requireSuper
 dbSaasRouter.post('/approve-registration', dbAuthMiddleware(), requireSuperAdmin, async (req, res) => {
   try {
     const result = await approveRegistration(String(req.body?.registrationId), req.user.uid);
-    return res.json({ success: true, ...result, status: 'active', trialDays: 7 });
+    return res.json({ success: true, ...result, status: 'active', planCode: 'FREE' });
   } catch (error: any) {
     if (error?.message === 'REGISTRATION_NOT_FOUND') return res.status(404).json({ success: false, error: 'Không tìm thấy hồ sơ đăng ký.' });
     return res.status(500).json({ success: false, error: 'Không thể phê duyệt hồ sơ trên database.' });
