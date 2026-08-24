@@ -12,7 +12,6 @@ CREATE TABLE IF NOT EXISTS tenants (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY,
   tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
@@ -227,6 +226,22 @@ ALTER TABLE subscriptions ALTER COLUMN expires_at DROP NOT NULL;
 ALTER TABLE tenant_registrations ALTER COLUMN plan_code SET DEFAULT 'FREE';
 UPDATE subscriptions SET plan_code='FREE',status='active',expires_at=NULL,max_users=1,updated_at=NOW() WHERE plan_code IN ('TRIAL_7_DAYS','TRIAL_7D') OR status='trial';
 UPDATE tenant_registrations SET plan_code='FREE' WHERE plan_code IN ('TRIAL_7_DAYS','TRIAL_7D');
+
+-- Backward compatibility: old registration/tenant creation code may still submit trial values.
+-- Normalize those writes to the permanent FREE plan before FK/check validation.
+CREATE OR REPLACE FUNCTION bizone_normalize_subscription_plan() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.plan_code IN ('TRIAL_7_DAYS','TRIAL_7D') OR NEW.status = 'trial' THEN
+    NEW.plan_code := 'FREE';
+    NEW.status := 'active';
+    NEW.expires_at := NULL;
+    NEW.max_users := 1;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_bizone_normalize_subscription_plan ON subscriptions;
+CREATE TRIGGER trg_bizone_normalize_subscription_plan BEFORE INSERT OR UPDATE ON subscriptions FOR EACH ROW EXECUTE FUNCTION bizone_normalize_subscription_plan();
 
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version TEXT PRIMARY KEY,
