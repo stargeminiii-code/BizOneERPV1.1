@@ -2,13 +2,15 @@ import express from 'express';
 import { dbAuthRouter } from './backend/db/authRouter';
 import { dbSaasRouter } from './backend/db/saasRouter';
 import { dbSecurityRouter } from './backend/db/securityRouter';
+import { dbMonetizationRouter } from './backend/db/monetizationRouter';
 
-// Compatibility layer: keep the existing ERP server/UI and replace only Auth/SaaS/Security persistence routes.
+// Compatibility layer: keep the existing ERP server/UI and replace only Auth/SaaS/Security/Monetization persistence routes.
 const originalPost = express.application.post;
 const originalGet = express.application.get;
 let authMounted = false;
 let saasMounted = false;
 let securityMounted = false;
+let monetizationMounted = false;
 
 const AUTH_PATHS = new Set([
   '/api/auth/login',
@@ -29,17 +31,22 @@ function mountSaas(app: any) {
 function mountSecurity(app: any) {
   if (!securityMounted) { app.use('/api/security', dbSecurityRouter); securityMounted = true; }
 }
+function mountMonetization(app: any) {
+  if (!monetizationMounted) { app.use('/api/monetization', dbMonetizationRouter); monetizationMounted = true; }
+}
 
 (express.application as any).post = function(path: any, ...handlers: any[]) {
   if (typeof path === 'string' && AUTH_PATHS.has(path)) { mountAuth(this); return this; }
   if (typeof path === 'string' && SAAS_POST_PATHS.has(path)) { mountSaas(this); return this; }
   if (typeof path === 'string' && (path.startsWith('/api/security/') || path === '/api/security')) { mountSecurity(this); return this; }
+  if (typeof path === 'string' && path.startsWith('/api/monetization/')) { mountMonetization(this); return this; }
   return originalPost.call(this, path, ...handlers);
 };
 
 (express.application as any).get = function(path: any, ...handlers: any[]) {
   if (path === '/api/saas/registrations') { mountSaas(this); return this; }
   if (typeof path === 'string' && (path.startsWith('/api/security/') || path === '/api/security')) { mountSecurity(this); return this; }
+  if (typeof path === 'string' && path.startsWith('/api/monetization/')) { mountMonetization(this); return this; }
   return originalGet.call(this, path, ...handlers);
 };
 
