@@ -1,0 +1,3 @@
+Round 2 implementation marker.
+
+Database foundation is prepared on this branch. Before production activation, run migrations and verify Auth/SaaS integration against PostgreSQL. Do not merge or deploy until the Render database connection and environment variables are configured.

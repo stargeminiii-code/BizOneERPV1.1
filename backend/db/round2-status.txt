@@ -1,0 +1,1 @@
+Round 2 implemented: PostgreSQL customer registration, pending approval, Super Admin approval, automatic 7-day trial, DB login, DB password-reset OTP storage, DB sessions/revocation, compatibility server entrypoint, and Render deployment instructions. Legacy ERP domain stores and legacy 2FA/audit repositories remain for Round 3 to avoid breaking current ERP business modules.

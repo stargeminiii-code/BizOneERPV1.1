@@ -1,0 +1,1 @@
+Round 2: PostgreSQL customer registration, approval, 7-day trial, login, password-reset OTP, sessions and password-reset session revocation. Existing ERP business repositories and legacy 2FA/audit remain until Round 3 to avoid breaking current ERP modules.
