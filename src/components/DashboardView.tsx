@@ -17,6 +17,7 @@ import {
 } from '../types';
 import { EnterpriseControlTower } from './ExecutiveControlTower/EnterpriseControlTower';
 import { DashboardDataSummaryPanel, DashboardSummaryData, DashboardSummaryKey } from './Dashboard/DashboardDataSummaryPanel';
+import { DashboardInventoryDataFlow, InventoryFlowNodeKey } from './Dashboard/DashboardInventoryDataFlow';
 
 interface DashboardViewProps {
   metrics: DashboardMetrics;
@@ -86,6 +87,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
   const [summary, setSummary] = useState<DashboardSummaryData | null>(null);
 
+  const buildFlowSummary = (key: InventoryFlowNodeKey): DashboardSummaryData => {
+    const labels: Record<InventoryFlowNodeKey, { title: string; description: string; summaryKey: DashboardSummaryKey }> = {
+      'product-master': { title: 'Product Master', description: 'Danh mục gốc cung cấp thông tin sản phẩm cho SKU và các nghiệp vụ phía sau.', summaryKey: 'kpi-inv' },
+      sku: { title: 'SKU', description: 'SKU là đơn vị quản trị tồn kho, giá vốn và giao dịch bán/mua.', summaryKey: 'kpi-inv' },
+      warehouse: { title: 'Warehouse', description: `Dữ liệu tồn đang được tổng hợp theo ${warehouses.length.toLocaleString('vi-VN')} kho/địa điểm hiện có.`, summaryKey: 'kpi-inv' },
+      ledger: { title: 'Inventory Ledger', description: `Sổ giao dịch là lớp nguồn cho biến động tồn kho. ${stockTransactions.length.toLocaleString('vi-VN')} giao dịch hiện có trong dữ liệu Dashboard.`, summaryKey: 'kpi-inv' },
+      fifo: { title: 'FIFO Layers', description: 'Các lớp FIFO hiện hữu là nguồn xác định giá trị tồn và giá vốn theo nguyên tắc nhập trước – xuất trước.', summaryKey: 'kpi-inv' },
+      stock: { title: 'Stock Balance', description: 'Tồn hiện tại được trình bày từ các lớp tồn còn lại; Summary không ghi trực tiếp vào số dư.', summaryKey: 'kpi-inv' },
+      cogs: { title: 'COGS', description: 'Giá vốn hàng bán được liên kết với FIFO để phục vụ phân tích lợi nhuận gộp.', summaryKey: 'kpi-profit' },
+      profit: { title: 'Gross Profit', description: 'Lợi nhuận gộp = Doanh thu thuần − COGS. Đây là lớp kết quả cuối của chuỗi Inventory → Profit.', summaryKey: 'kpi-profit' }
+    };
+    const item = labels[key];
+    return {
+      key: item.summaryKey,
+      title: item.title,
+      actual: 'Theo dữ liệu hiện tại',
+      plan: 'Theo kỳ đã chọn',
+      gap: 'Xem theo kỳ đã chọn',
+      achievementRate: 0,
+      status: 'good',
+      description: item.description
+    };
+  };
+
   const handleDashboardClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement | null;
     const button = target?.closest('button');
@@ -118,7 +143,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           : 'Tóm tắt KPI tại Dashboard. Chi tiết sâu chỉ mở khi người dùng chủ động chọn “Xem chi tiết”.'
     };
 
-    // Prevent the legacy KPI drill-down drawer from opening immediately.
     event.preventDefault();
     event.stopPropagation();
     setSummary(data);
@@ -137,12 +161,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           onClose={() => setSummary(null)}
           onViewDetail={(key) => {
             setSummary(null);
-            if (key === 'kpi-inv') {
-              onNavigateToView?.('warehouse-dashboard');
-            }
+            if (key === 'kpi-inv') onNavigateToView?.('warehouse-dashboard');
+            if (key === 'kpi-profit') onNavigateToView?.('finance-dashboard');
           }}
         />
       )}
+
+      <DashboardInventoryDataFlow onSelect={(key) => setSummary(buildFlowSummary(key))} />
 
       <EnterpriseControlTower
         orders={orders}
