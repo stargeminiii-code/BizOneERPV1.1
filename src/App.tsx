@@ -4,6 +4,11 @@ import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { DashboardView } from './components/DashboardView';
 import { PosView } from './components/PosView';
+import { PosQuickSaleView } from './components/Sales/PosQuickSaleView';
+import { SalesReturnsView } from './components/Sales/SalesReturnsView';
+import { SalesReportsView } from './components/Sales/SalesReportsView';
+import { SalesChannelsView } from './components/Sales/SalesChannelsView';
+import { SalesReconciliationView } from './components/Sales/SalesReconciliationView';
 import { OrdersView } from './components/OrdersView';
 import { InventoryView } from './components/InventoryView';
 import { StockCardView } from './components/StockCardView';
@@ -48,9 +53,12 @@ import { SyncEInvoiceModal } from './components/Modals/SyncEInvoiceModal';
 import { EInvoiceEntryModal } from './components/Modals/EInvoiceEntryModal';
 import { DeleteConfirmModal } from './components/Modals/DeleteConfirmModal';
 import { InvoiceExtractionModal } from './components/Modals/InvoiceExtractionModal';
+import { DesignSystemGalleryModal } from './components/ui/DesignSystemGalleryModal';
 import { LoginView } from './components/Auth/LoginView';
 import { ProtectedViewGuard } from './components/Auth/ProtectedViewGuard';
 import { PlatformAdminView } from './components/SaaS/PlatformAdminView';
+import { FinanceWorkspaceView } from './components/FinanceWorkspaceView';
+import { CcuWorkspaceView } from './components/CcuWorkspaceView';
 import { AuthService } from './services/authService';
 import { SaaSService } from './services/saasService';
 import {
@@ -60,6 +68,8 @@ import {
   filterCashTransactionsByScope
 } from './utils/dataScopeUtils';
 import { eInvoiceService } from './services/eInvoiceService';
+import { TemporalBusinessEngine } from './services/temporal/temporalService';
+import { SalesTransactionEngine } from './services/sales/salesTransactionEngine';
 
 import {
   Customer,
@@ -92,7 +102,9 @@ import {
   WorkCategoryHierarchy,
   EnterpriseSystemAlert,
   EnterpriseForecastItem,
-  PerformanceScorecard
+  PerformanceScorecard,
+  SalesReturn,
+  WorkspaceTab
 } from './types';
 
 import {
@@ -258,6 +270,7 @@ export default function App() {
   const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<Order | null>(null);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isStockAdjustmentOpen, setIsStockAdjustmentOpen] = useState(false);
+  const [isDesignSystemOpen, setIsDesignSystemOpen] = useState(false);
   const [isCreateIssueOpen, setIsCreateIssueOpen] = useState(false);
   const [isStockTransferOpen, setIsStockTransferOpen] = useState(false);
   const [isStocktakeOpen, setIsStocktakeOpen] = useState(false);
@@ -328,25 +341,115 @@ export default function App() {
     }
   };
 
-  // 1. FIFO Sales Deduction Handler
-  const handleAddOrder = (orderInput: Order) => {
-    const itemsToDeduct = orderInput.items.map((it) => ({
-      sku: it.sku,
-      productId: it.productId,
-      productName: it.productName,
-      quantity: it.quantity,
-      salePrice: it.unitPrice,
-      unit: it.unit
-    }));
+  // Sales Returns
+  const [salesReturns, setSalesReturns] = useState<SalesReturn[]>([]);
 
-    const result = fifoEngine.executeFifoIssue(itemsToDeduct, inventoryLots, {
-      issueId: `iss-ord-${orderInput.id}`,
-      docCode: orderInput.code,
-      docType: 'Xuất bán',
-      branchId: 'BR01',
-      warehouseId: 'WH01',
-      actor: orderInput.creator || 'Lê Hoàng Nam (Sales KV1)',
-      note: `Xuất kho tự động cho đơn bán hàng ${orderInput.code}`
+  const handleSelectNavView = (view: ViewMode) => {
+    setCurrentView(view);
+  };
+
+  const handleDashboardDrillDown = (view: string, filter?: string) => {
+    const vm = view as ViewMode;
+    const targetView: ViewMode =
+      (vm as string) === 'debt_receivables'
+        ? 'crm'
+        : (vm as string) === 'products'
+        ? 'inventory'
+        : (vm as string) === 'finance'
+        ? 'cashflow'
+        : vm;
+
+    setCurrentView(targetView);
+    if (filter) {
+      setSearchTerm(filter);
+    }
+  };
+
+  // Unified Sales Return Handler (Phase 2.4)
+  const handleProcessSalesReturn = (returnData: {
+    orderId: string;
+    items: Array<{ orderItemId: string; sku: string; quantity: number; returnPrice: number; reason?: string }>;
+    refundAmount: number;
+    refundMethod: 'cash' | 'bank_transfer' | 'customer_balance';
+    restockToWarehouse: boolean;
+    branchId?: string;
+    warehouseId?: string;
+    reason?: string;
+  }) => {
+    const result = SalesTransactionEngine.processSalesReturn({
+      tenantId: currentUser?.tenant || 'TENANT-DEFAULT',
+      orderId: returnData.orderId,
+      branchId: returnData.branchId || 'BR01',
+      warehouseId: returnData.warehouseId || 'WH01',
+      actor: currentUser?.name || 'Quản trị viên',
+      items: returnData.items,
+      refundAmount: returnData.refundAmount,
+      refundMethod: returnData.refundMethod,
+      restockToWarehouse: returnData.restockToWarehouse,
+      reason: returnData.reason,
+      existingOrders: orders,
+      existingLayers: inventoryLots,
+      existingCustomers: customers
+    });
+
+    if (!result.success) {
+      alert(`Không thể hoàn trả đơn hàng: ${result.errorMessage || 'Lỗi không xác định'}`);
+      return;
+    }
+
+    // Apply updates to state
+    setOrders(result.updatedOrders);
+    setInventoryLots(result.updatedLayers);
+    setProducts((prev) => fifoEngine.syncProductsWithLayers(prev, result.updatedLayers));
+    setCustomers(result.updatedCustomers);
+    setSalesReturns((prev) => [result.salesReturn, ...prev]);
+
+    if (result.generatedStockTransactions.length > 0) {
+      setStockTransactions((prev) => [...result.generatedStockTransactions, ...prev]);
+    }
+
+    if (result.cashTransaction) {
+      setCashTransactions((prev) => [result.cashTransaction!, ...prev]);
+    }
+
+    if (result.auditLogs.length > 0) {
+      setAuditLogs((prev) => [...result.auditLogs, ...prev]);
+    }
+
+    alert(`Đã xử lý hoàn trả & hoàn tiền thành công cho đơn #${returnData.orderId}`);
+  };
+
+  // 1. Unified Sales Transaction Handler (Phase 2.4)
+  const handleAddOrder = (orderInput: Order) => {
+    const result = SalesTransactionEngine.processSalesOrder({
+      tenantId: currentUser?.tenant || 'TENANT-DEFAULT',
+      branchId: orderInput.branchId || 'BR01',
+      warehouseId: orderInput.warehouseId || 'WH01',
+      channel: orderInput.channel || 'direct',
+      customerId: (orderInput as any).customerId,
+      customerName: orderInput.customerName,
+      customerPhone: orderInput.customerPhone,
+      items: orderInput.items.map((it) => ({
+        sku: it.sku,
+        productId: it.productId,
+        productName: it.productName,
+        quantity: it.quantity,
+        salePrice: it.unitPrice,
+        unit: it.unit
+      })),
+      discount: orderInput.discount ? {
+        type: 'fixed',
+        value: orderInput.discount,
+        reason: 'Khuyến mãi / Giảm giá trực tiếp'
+      } : undefined,
+      paymentMethod: orderInput.paymentMethod || 'cash',
+      paymentStatus: orderInput.paymentStatus || 'paid',
+      amountPaid: orderInput.paymentStatus === 'paid' ? orderInput.totalAmount : 0,
+      actor: orderInput.creator || currentUser?.name || 'Lê Hoàng Nam (Sales KV1)',
+      note: orderInput.note,
+      existingLayers: inventoryLots,
+      existingCustomers: customers,
+      existingProducts: products
     });
 
     if (!result.success) {
@@ -355,49 +458,20 @@ export default function App() {
     }
 
     setInventoryLots(result.updatedLayers);
-    setStockTransactions((prev) => [...result.generatedTransactions, ...prev]);
-    setAuditLogs((prev) => [...result.auditLogs, ...prev]);
     setProducts((prev) => fifoEngine.syncProductsWithLayers(prev, result.updatedLayers));
+    setCustomers(result.updatedCustomers);
+    setOrders((prev) => [result.order, ...prev]);
 
-    const completeOrder: Order = {
-      ...orderInput,
-      cogs: result.totalCogs,
-      grossProfit: orderInput.totalAmount - result.totalCogs
-    };
-
-    setOrders((prev) => [completeOrder, ...prev]);
-
-    // Update Customer debt & total spent
-    if (orderInput.customerName) {
-      setCustomers((prev) =>
-        prev.map((c) => {
-          if (c.name.toLowerCase() === orderInput.customerName.toLowerCase()) {
-            const addedDebt = orderInput.paymentStatus === 'paid' ? 0 : orderInput.totalAmount;
-            return {
-              ...c,
-              totalSpent: (c.totalSpent || 0) + orderInput.totalAmount,
-              debt: (c.debt || 0) + addedDebt
-            };
-          }
-          return c;
-        })
-      );
+    if (result.generatedStockTransactions.length > 0) {
+      setStockTransactions((prev) => [...result.generatedStockTransactions, ...prev]);
     }
 
-    if (orderInput.paymentStatus === 'paid') {
-      const newTx: CashTransaction = {
-        id: `tx-${Date.now()}`,
-        code: `PT-2026-0${Math.floor(100 + Math.random() * 900)}`,
-        type: 'thu',
-        category: 'Thu tiền bán hàng',
-        amount: orderInput.totalAmount,
-        description: `Thu tiền đơn hàng ${orderInput.code}`,
-        paymentMethod: orderInput.paymentMethod,
-        payerOrPayee: orderInput.customerName,
-        createdAt: orderInput.createdAt,
-        referenceCode: orderInput.code
-      };
-      setCashTransactions((prev) => [newTx, ...prev]);
+    if (result.cashTransaction) {
+      setCashTransactions((prev) => [result.cashTransaction!, ...prev]);
+    }
+
+    if (result.auditLogs.length > 0) {
+      setAuditLogs((prev) => [...result.auditLogs, ...prev]);
     }
   };
 
@@ -756,7 +830,7 @@ export default function App() {
     if (openingStock && openingStock.quantity > 0) {
       const newLot: InventoryLayer = {
         id: `LAYER-OPEN-${Date.now()}-0`,
-        layerId: `LOT-OPEN-${prod.code}-${Math.floor(100 + Math.random() * 900)}`,
+        layerId: `LOT-OPEN-${prod.code}-001`,
         layerType: 'OPENING_BALANCE',
         sku: prod.sku,
         productId: prod.productId,
@@ -816,7 +890,7 @@ export default function App() {
           const vCost = Number(v.costPrice) || Number(prod.costPrice) || 0;
           const vLot: InventoryLayer = {
             id: `LAYER-OPEN-VAR-${Date.now()}-${idx + 1}`,
-            layerId: `LOT-OPEN-${vSku}-${Math.floor(100 + Math.random() * 900)}`,
+            layerId: `LOT-OPEN-${vSku}-${String(idx + 1).padStart(3, '0')}`,
             layerType: 'OPENING_BALANCE',
             sku: vSku,
             productId: prod.productId,
@@ -1580,7 +1654,7 @@ export default function App() {
       {/* Sticky Left Sidebar / Mobile Drawer */}
       <Sidebar
         currentView={currentView}
-        onSelectView={setCurrentView}
+        onSelectView={handleSelectNavView}
         lowStockCount={lowStockCount}
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}
@@ -1603,6 +1677,7 @@ export default function App() {
           onChangeCurrentUser={handleChangeCurrentUser}
           onLogout={handleLogout}
           onNavigateToSettings={() => setCurrentView('settings')}
+          onOpenDesignSystem={() => setIsDesignSystemOpen(true)}
         />
 
         {/* View Routing */}
@@ -1610,7 +1685,7 @@ export default function App() {
           <ProtectedViewGuard
             view={currentView}
             currentUser={currentUser}
-            onNavigateHome={() => setCurrentView('dashboard')}
+            onNavigateHome={() => handleSelectNavView('dashboard')}
             onSwitchUser={() => setIsAuthenticated(false)}
           >
             {currentView === 'enterprise-planning' && (
@@ -1667,13 +1742,10 @@ export default function App() {
               cashTransactions={cashTransactions}
               users={users}
               currentUser={currentUser}
-              onNavigateToView={(view, filter) => {
-                setCurrentView(view as any);
-                if (filter) setSearchTerm(filter);
-              }}
+              onNavigateToView={handleDashboardDrillDown}
               onOpenCreatePO={handleOpenCreatePO}
               onOpenCrmTask={handleOpenCrmTask}
-              onViewAllOrders={() => setCurrentView('orders')}
+              onViewAllOrders={() => handleDashboardDrillDown('orders')}
               onSelectOrder={handleOpenOrderDetail}
               onRefreshDiagnosis={handleRefreshDiagnosis}
               isDiagnosing={isDiagnosing}
@@ -1682,137 +1754,22 @@ export default function App() {
             />
           )}
 
-          {currentView === 'pos' && (
-            <PosView
-              products={products}
-              customers={customers}
-              inventoryLots={inventoryLots}
-              onCompleteSale={handleAddOrder}
-              onOpenVietQr={handleOpenVietQrModal}
-            />
-          )}
-
-          {currentView === 'orders' && (
+          {(currentView === 'orders' || currentView === 'pos') && (
             <OrdersView
               orders={scopedOrders}
+              products={products}
+              inventoryLots={inventoryLots}
+              customers={customers}
+              branches={branches}
+              warehouses={warehouses}
+              salesReturns={salesReturns}
+              currentUser={currentUser || undefined}
+              initialTab={currentView === 'pos' ? 'pos' : 'list'}
               onOpenCreateOrder={() => setIsCreateOrderOpen(true)}
               onSelectOrder={handleOpenOrderDetail}
               onOpenVietQr={handleOpenVietQrModal}
-            />
-          )}
-
-          {currentView === 'inventory' && (
-            <InventoryView
-              products={products}
-              inventoryLots={inventoryLots}
-              stockTransactions={stockTransactions}
-              onOpenCreatePO={handleOpenCreatePO}
-              onOpenStockAdjustment={() => setIsStockAdjustmentOpen(true)}
-              onNavigateToStockCards={() => setCurrentView('stockcards')}
-              onNavigateToFifoLots={() => setCurrentView('warehouse-fifo-lots')}
-              onOpenCreateProduct={handleOpenCreateProduct}
-              onOpenEditProduct={handleOpenEditProduct}
-              onDeleteProduct={handleDeleteProduct}
-              onOpenImportProducts={() => setIsProductImportOpen(true)}
-              onOpenSyncEInvoice={() => setIsSyncEInvoiceOpen(true)}
-              onOpenEInvoiceEntry={() => setIsEInvoiceEntryOpen(true)}
-            />
-          )}
-
-          {currentView === 'variant-definitions' && (
-            <VariantSkuMasterView
-              products={products}
-              inventoryLots={inventoryLots}
-              onAddProduct={(prod) => handleSaveProduct(prod)}
-              onUpdateProduct={(prod) => handleSaveProduct(prod)}
-              onDeleteProduct={handleDeleteProduct}
-              onOpenCreatePO={handleOpenCreatePO}
-              onOpenEInvoiceEntry={() => setIsEInvoiceEntryOpen(true)}
-            />
-          )}
-
-          {currentView === 'warehouse-dashboard' && (
-            <WarehouseDashboardView
-              products={products}
-              inventoryLots={inventoryLots}
-              stockTransactions={stockTransactions}
-              branches={branches}
-              warehouses={warehouses}
-              stockIssues={stockIssues}
-              stockTransfers={stockTransfers}
-              stocktakes={stocktakes}
-              selectedBranchId={selectedBranchId}
-              onSelectBranch={setSelectedBranchId}
-              onNavigateToTab={(v) => setCurrentView(v as ViewMode)}
-              onOpenCreatePO={() => setIsCreatePOOpen(true)}
-              onOpenCreateIssue={() => setIsCreateIssueOpen(true)}
-              onOpenCreateTransfer={() => setIsStockTransferOpen(true)}
-              onOpenStocktake={() => setIsStocktakeOpen(true)}
-            />
-          )}
-
-          {currentView === 'warehouse-issues' && (
-            <StockIssuesView
-              stockIssues={stockIssues}
-              branches={branches}
-              warehouses={warehouses}
-              products={products}
-              onOpenCreateIssue={() => setIsCreateIssueOpen(true)}
-            />
-          )}
-
-          {currentView === 'warehouse-transfers' && (
-            <StockTransferView
-              stockTransfers={stockTransfers}
-              warehouses={warehouses}
-              branches={branches}
-              products={products}
-              onOpenCreateTransfer={() => setIsStockTransferOpen(true)}
-            />
-          )}
-
-          {currentView === 'warehouse-stocktakes' && (
-            <StocktakeView
-              stocktakes={stocktakes}
-              warehouses={warehouses}
-              branches={branches}
-              products={products}
-              onOpenStocktake={() => setIsStocktakeOpen(true)}
-            />
-          )}
-
-          {currentView === 'warehouse-fifo-lots' && (
-            <FifoLotsView
-              inventoryLots={inventoryLots}
-              products={products}
-              warehouses={warehouses}
-              branches={branches}
-              onOpenStockCard={(sku) => {
-                setSearchTerm(sku);
-                setCurrentView('stockcards');
-              }}
-              onOpenSyncEInvoice={() => setIsSyncEInvoiceOpen(true)}
-            />
-          )}
-
-          {currentView === 'warehouse-reports' && (
-            <WarehouseReportsView
-              products={products}
-              inventoryLots={inventoryLots}
-              stockTransactions={stockTransactions}
-              stockIssues={stockIssues}
-              branches={branches}
-              warehouses={warehouses}
-            />
-          )}
-
-          {(currentView === 'stockcards' || (currentView as string) === 'stock-cards') && (
-            <StockCardView
-              products={products}
-              inventoryLots={inventoryLots}
-              stockTransactions={stockTransactions}
-              onOpenCreatePO={handleOpenCreatePO}
-              onOpenStockAdjustment={() => setIsStockAdjustmentOpen(true)}
+              onCompleteSale={handleAddOrder}
+              onProcessReturn={handleProcessSalesReturn}
             />
           )}
 
@@ -1852,36 +1809,106 @@ export default function App() {
             />
           )}
 
-          {currentView === 'suppliers' && (
-            <SupplierView
-              suppliers={suppliers}
-              purchaseOrders={purchaseOrders}
-              products={products}
-              inventoryLayers={inventoryLots}
-              branches={branches}
-              warehouses={warehouses}
-              supplierTasks={supplierTasks}
-              supplierPayments={supplierPayments}
-              onAddSupplier={handleAddSupplier}
-              onUpdateSupplier={handleUpdateSupplier}
-              onDeleteSupplier={handleDeleteSupplier}
-              onToggleStatus={handleToggleSupplierStatus}
-              onOpenCreatePO={handleOpenCreatePO}
-              onSaveSupplierTask={handleSaveSupplierTask}
-              onToggleSupplierTask={handleToggleSupplierTask}
-              onDeleteSupplierTask={handleDeleteSupplierTask}
-              onSaveSupplierPayment={handleSaveSupplierPayment}
-              onImportSuppliers={handleImportSuppliers}
+          {(currentView === 'finance' ||
+            currentView === 'cashflow' ||
+            currentView === 'pnl' ||
+            currentView === 'banking' ||
+            currentView === 'sales-channels' ||
+            currentView === 'sales-reconciliation' ||
+            currentView === 'sales-reports') && (
+            <FinanceWorkspaceView
+              initialTab={
+                currentView === 'cashflow'
+                  ? 'cashflow'
+                  : currentView === 'pnl'
+                  ? 'pnl'
+                  : currentView === 'banking'
+                  ? 'banking'
+                  : currentView === 'sales-channels'
+                  ? 'channels'
+                  : currentView === 'sales-reconciliation'
+                  ? 'reconciliation'
+                  : currentView === 'sales-reports'
+                  ? 'reports'
+                  : 'cashflow'
+              }
+              cashTransactions={scopedCashTransactions}
+              bankAccounts={bankAccounts}
+              orders={orders}
+              currentUser={currentUser || undefined}
+              onAddCashTransaction={handleAddCashTransaction}
+              onSaveBankAccount={handleSaveBankAccount}
+              onSetDefaultBankAccount={handleSetDefaultBankAccount}
+              onToggleBankStatus={handleToggleBankStatus}
+              onNavigateToOrders={() => {
+                setCurrentView('orders');
+              }}
             />
           )}
 
-          {currentView === 'purchasing' && (
-            <PurchasingView
-              purchaseOrders={purchaseOrders}
-              suppliers={suppliers}
+          {(currentView === 'ccu' ||
+            currentView === 'variant-definitions' ||
+            currentView === 'inventory' ||
+            currentView === 'warehouse-dashboard' ||
+            currentView === 'warehouse-issues' ||
+            currentView === 'warehouse-transfers' ||
+            currentView === 'warehouse-stocktakes' ||
+            currentView === 'warehouse-fifo-lots' ||
+            currentView === 'warehouse-reports' ||
+            currentView === 'stockcards' ||
+            (currentView as string) === 'stock-cards' ||
+            currentView === 'purchasing' ||
+            currentView === 'suppliers' ||
+            currentView === 'beverages' ||
+            currentView === 'sales-returns') && (
+            <CcuWorkspaceView
+              initialTab={
+                currentView === 'variant-definitions'
+                  ? 'products'
+                  : currentView === 'inventory'
+                  ? 'inventory'
+                  : currentView === 'warehouse-dashboard' ||
+                    currentView === 'warehouse-issues' ||
+                    currentView === 'warehouse-transfers' ||
+                    currentView === 'warehouse-stocktakes' ||
+                    currentView === 'warehouse-reports'
+                  ? 'warehouses'
+                  : currentView === 'purchasing'
+                  ? 'purchasing'
+                  : currentView === 'suppliers'
+                  ? 'suppliers'
+                  : currentView === 'beverages'
+                  ? 'recipes'
+                  : currentView === 'sales-returns'
+                  ? 'returns'
+                  : currentView === 'warehouse-fifo-lots'
+                  ? 'fifo_lots'
+                  : currentView === 'stockcards' || (currentView as string) === 'stock-cards'
+                  ? 'stockcards'
+                  : 'products'
+              }
               products={products}
               inventoryLots={inventoryLots}
+              stockTransactions={stockTransactions}
+              warehouses={warehouses}
+              branches={branches}
+              suppliers={suppliers}
+              purchaseOrders={purchaseOrders}
+              stockIssues={stockIssues}
+              stockTransfers={stockTransfers}
+              stocktakes={stocktakes}
+              supplierTasks={supplierTasks}
+              supplierPayments={supplierPayments}
+              orders={orders}
+              salesReturns={salesReturns}
+              currentUser={currentUser || undefined}
               onOpenCreatePO={handleOpenCreatePO}
+              onOpenStockAdjustment={() => setIsStockAdjustmentOpen(true)}
+              onOpenCreateProduct={handleOpenCreateProduct}
+              onOpenEditProduct={handleOpenEditProduct}
+              onDeleteProduct={handleDeleteProduct}
+              onSaveProduct={handleSaveProduct}
+              onOpenImportProducts={() => setIsProductImportOpen(true)}
               onOpenSyncEInvoice={() => setIsSyncEInvoiceOpen(true)}
               onOpenEInvoiceEntry={() => setIsEInvoiceEntryOpen(true)}
               onOpenInvoiceExtraction={() => setIsInvoiceExtractionOpen(true)}
@@ -1890,26 +1917,29 @@ export default function App() {
                 setPoToEdit(po);
                 setIsCreatePOOpen(true);
               }}
+              onAddSupplier={handleAddSupplier}
+              onUpdateSupplier={handleUpdateSupplier}
+              onDeleteSupplier={handleDeleteSupplier}
+              onToggleSupplierStatus={handleToggleSupplierStatus}
+              onSaveSupplierTask={handleSaveSupplierTask}
+              onToggleSupplierTask={handleToggleSupplierTask}
+              onDeleteSupplierTask={handleDeleteSupplierTask}
+              onSaveSupplierPayment={handleSaveSupplierPayment}
+              onImportSuppliers={handleImportSuppliers}
+              onAddOrder={handleAddOrder}
+              onProcessReturn={handleProcessSalesReturn}
+              onOpenCreateIssue={() => setIsCreateIssueOpen(true)}
+              onOpenCreateTransfer={() => setIsStockTransferOpen(true)}
+              onOpenStocktake={() => setIsStocktakeOpen(true)}
             />
           )}
 
-          {currentView === 'cashflow' && (
-            <CashflowView
-              transactions={scopedCashTransactions}
-              onAddTransaction={handleAddCashTransaction}
+          {currentView === 'saas-platform-admin' && (
+            <PlatformAdminView
+              currentUser={currentUser}
+              onBackToERP={() => setCurrentView('dashboard')}
             />
           )}
-
-          {currentView === 'banking' && (
-            <BankingView
-              bankAccounts={bankAccounts}
-              onSaveBankAccount={handleSaveBankAccount}
-              onSetDefaultAccount={handleSetDefaultBankAccount}
-              onToggleStatus={handleToggleBankStatus}
-            />
-          )}
-
-          {currentView === 'pnl' && <PnlView />}
 
           {currentView === 'users-roles' && (
             <UsersRolesView
@@ -1933,8 +1963,6 @@ export default function App() {
               isDiagnosing={isDiagnosing}
             />
           )}
-
-          {currentView === 'beverages' && <BeveragesView />}
 
           {currentView === 'marketing' && <MarketingView />}
 
@@ -2192,6 +2220,12 @@ export default function App() {
         product={productToDelete}
         inventoryLots={inventoryLots}
         onConfirmDelete={handleConfirmDeleteProduct}
+      />
+
+      {/* UI Foundation & Design System Showcase Gallery Modal */}
+      <DesignSystemGalleryModal
+        isOpen={isDesignSystemOpen}
+        onClose={() => setIsDesignSystemOpen(false)}
       />
     </div>
   );

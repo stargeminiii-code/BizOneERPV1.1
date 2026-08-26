@@ -3,6 +3,12 @@ export type ViewMode =
   | 'enterprise-planning'
   | 'pos'
   | 'orders'
+  | 'sales-channels'
+  | 'sales-reconciliation'
+  | 'sales-returns'
+  | 'sales-reports'
+  | 'finance'
+  | 'ccu'
   | 'beverages'
   | 'inventory'
   | 'variant-definitions'
@@ -28,7 +34,7 @@ export type ViewMode =
   | 'warehouse-reports'
   | 'saas-platform-admin';
 
-export type OrderStatus = 'completed' | 'processing' | 'shipping' | 'cancelled';
+export type OrderStatus = 'completed' | 'processing' | 'shipping' | 'cancelled' | 'refunded' | 'partially_refunded';
 
 export type PaymentMethod = 'vietqr' | 'cash' | 'bank_transfer' | 'credit';
 
@@ -52,13 +58,33 @@ export interface Warehouse {
   manager?: string;
 }
 
-export type LayerType = 'RECEIPT' | 'OPENING_BALANCE' | 'TRANSFER_IN' | 'ADJUSTMENT_IN' | 'RETURN_IN';
+export type LayerType =
+  | 'RECEIPT'
+  | 'OPENING_BALANCE'
+  | 'TRANSFER_IN'
+  | 'ADJUSTMENT_IN'
+  | 'RETURN_IN'
+  | 'PRODUCTION_IN'
+  | 'STOCKTAKE_IN';
 
-export type LayerStatus = 'active' | 'exhausted' | 'expired' | 'locked';
+export type LayerStatus =
+  | 'active'
+  | 'exhausted'
+  | 'expired'
+  | 'locked'
+  | 'quarantined'
+  | 'blocked'
+  | 'ACTIVE'
+  | 'DEPLETED'
+  | 'EXPIRED'
+  | 'BLOCKED'
+  | 'QUARANTINED';
 
 export interface InventoryLayer {
   id: string; // Unique ID
+  tenantId?: string;
   layerId: string; // e.g. LOT-20260801-001 or PN000001-01
+  lotNumber?: string;
   layerType: LayerType;
   sku: string;
   productId: string;
@@ -85,6 +111,7 @@ export interface InventoryLayer {
   quantityIssued: number;
   quantityRemaining: number;
   purchasePrice: number; // Inward Cost
+  unitCost?: number; // Alias for purchasePrice
   salePrice: number; // Standard Listed Sale Price
   status: LayerStatus;
   notes?: string;
@@ -116,13 +143,16 @@ export type InventoryLot = InventoryLayer;
 
 export interface FIFOAllocation {
   id: string;
+  tenantId?: string;
   issueId: string; // Reference to Order ID, Issue Note ID, Transfer ID, or Adjustment ID
   issueCode: string;
   sku: string;
   productName: string;
   layerId: string;
+  lotId?: string;
   quantity: number;
   purchasePrice: number;
+  unitCost?: number;
   salePrice: number;
   costAmount: number; // quantity * purchasePrice
   revenueAmount: number; // quantity * salePrice
@@ -162,21 +192,30 @@ export interface Order {
   customerPhone?: string;
   customerAddress?: string;
   branchId?: string;
+  branchName?: string;
   warehouseId?: string;
+  warehouseName?: string;
+  orderDate?: string;
   items: OrderItem[];
-  subtotal: number;
+  subtotal?: number;
   discount: number;
   tax: number;
   totalAmount: number;
-  cogs: number; // FIFO COGS (calculated from layer deductions)
-  grossProfit: number; // totalAmount - cogs
+  finalAmount?: number;
+  cogs?: number; // FIFO COGS (calculated from layer deductions)
+  grossProfit?: number; // totalAmount - cogs
+  expectedCogs?: number; // Standard / Recipe Expected Cost
+  cogsVariance?: number; // cogs - expectedCogs
   status: OrderStatus;
   paymentMethod: PaymentMethod;
   paymentStatus: 'paid' | 'partial' | 'unpaid';
-  createdAt: string;
-  creator: string;
+  createdAt?: string;
+  creator?: string;
+  channel?: string;
+  source?: string;
   note?: string;
   fifoDeductions?: OrderFifoDeduction[];
+  snapshot?: OrderTransactionSnapshot;
 }
 
 export type StockIssueType =
@@ -306,11 +345,30 @@ export interface Stocktake {
   createdAt?: string;
 }
 
+export type CanonicalTransactionType =
+  | 'RECEIPT'
+  | 'ISSUE'
+  | 'TRANSFER_IN'
+  | 'TRANSFER_OUT'
+  | 'ADJUSTMENT_IN'
+  | 'ADJUSTMENT_OUT'
+  | 'STOCKTAKE_IN'
+  | 'STOCKTAKE_OUT'
+  | 'PRODUCTION_IN'
+  | 'PRODUCTION_OUT'
+  | 'RETURN_IN'
+  | 'RETURN_OUT'
+  | 'REVERSAL';
+
 export interface StockTransaction {
   id: string;
+  tenantId?: string;
   date: string;
   type: 'Nhập kho' | 'Xuất bán' | 'Xuất chuyển kho' | 'Nhập chuyển kho' | 'Điều chỉnh tăng' | 'Điều chỉnh giảm' | 'Xuất hủy';
+  canonicalType?: CanonicalTransactionType;
   docCode: string; // PO-..., ORD-..., PX-..., CK-..., KK-..., ADJ-...
+  referenceType?: string;
+  referenceId?: string;
   sku: string;
   productId?: string;
   productName: string;
@@ -319,11 +377,19 @@ export interface StockTransaction {
   warehouseId?: string;
   qtyIn: number;
   qtyOut: number;
+  quantity?: number;
   balance: number;
   unitCost: number;
   totalValue: number;
+  totalCost?: number;
+  unitId?: string;
   actor: string;
+  createdBy?: string;
+  approvedBy?: string;
   note?: string;
+  reason?: string;
+  reversalOfTransactionId?: string;
+  status?: 'POSTED' | 'REVERSED' | 'DRAFT';
 }
 
 export interface AuditLog {
@@ -332,16 +398,46 @@ export interface AuditLog {
   userId: string;
   userName: string;
   action: 'created' | 'updated' | 'approved' | 'issued' | 'received' | 'transferred' | 'adjusted' | 'returned' | 'cancelled';
-  referenceType: 'PO' | 'ORDER' | 'ISSUE' | 'TRANSFER' | 'STOCKTAKE' | 'ADJUSTMENT';
+  referenceType: 'PO' | 'ORDER' | 'ISSUE' | 'TRANSFER' | 'STOCKTAKE' | 'ADJUSTMENT' | 'ORDER_RETURN' | 'REVERSAL' | 'SYSTEM';
   referenceId: string;
   description: string;
   oldValue?: string;
   newValue?: string;
 }
 
+// =========================================================================
+// PHASE 2.2 — UNIFIED PRODUCT MASTER ENGINE TYPES & DATA MODELS
+// =========================================================================
+
+export type ProductStatus = 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+
+export type ProductType =
+  | 'RAW_MATERIAL'     // Nguyên liệu thô (Nông sản, hóa chất, thép thô)
+  | 'FINISHED_GOOD'    // Thành phẩm (Đóng gói, chế biến, OCOP)
+  | 'TRADING_GOOD'     // Hàng hóa thương mại (Bán lẻ)
+  | 'FOOD'             // Thực phẩm chế biến / đồ ăn
+  | 'BEVERAGE'         // Đồ uống / Sữa hạt / Nước giải khát / Cafe
+  | 'FNB_INGREDIENT'   // Nguyên liệu F&B (Syrup, bột pha chế, sữa, trà)
+  | 'PACKAGING'        // Bao bì / Ly nhựa / Hộp giấy / Tem nhãn
+  | 'SEMI_FINISHED'    // Bán thành phẩm (Cà phê cốt, nước sốt nền, cốt trà ủ)
+  | 'COMBO'            // Gói sản phẩm Combo / Set quà Tết / Menu set
+  | 'SERVICE'          // Dịch vụ / Phí vận chuyển / Gia công
+  | 'OTHER';           // Khác
+
+export interface CustomAttribute {
+  key: string;
+  value: any;
+  label?: string;
+  type?: 'text' | 'number' | 'boolean' | 'date' | 'select' | 'array';
+}
+
 export interface ProductVariant {
   id?: string;
+  variantId?: string;
+  tenantId?: string;
+  productId?: string;
   variantName: string; // e.g. "Combo 2 Hộp", "Combo 6 Hộp", "1/2 Thùng", "Thùng 24 Hộp"
+  name?: string; // Alias for variantName
   variantSku?: string; // e.g. "VCCCM330-UHT-C02"
   sku: string; // SKU identifier
   packSize: number | string; // e.g. 2, 6, 10, 12, 24
@@ -353,16 +449,184 @@ export interface ProductVariant {
   note?: string;
   barcode?: string;
   importQuantity?: number; // Số lượng sản phẩm nhập / tồn kho ban đầu
+  attributes?: Record<string, any>;
+  status?: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+}
+
+export interface Variant {
+  variantId: string;
+  tenantId: string;
+  productId: string;
+  name: string;
+  attributes: Record<string, any>;
+  status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SKU {
+  skuId: string;
+  tenantId: string;
+  productId: string;
+  variantId?: string;
+  sku: string; // SKU unique per tenant
+  unitId: string;
+  baseUnitId?: string;
+  conversionFactor?: number; // Default 1
+  weight?: number; // In grams
+  dimensions?: {
+    length?: number;
+    width?: number;
+    height?: number;
+    unit?: 'cm' | 'mm' | 'm';
+  };
+  status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type BarcodeType = 'EAN' | 'UPC' | 'CODE128' | 'INTERNAL';
+
+export interface Barcode {
+  barcodeId: string;
+  tenantId: string;
+  skuId: string;
+  code: string; // Unique in tenant
+  type: BarcodeType;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type UnitType = 'COUNT' | 'WEIGHT' | 'VOLUME' | 'LENGTH' | 'AREA' | 'OTHER';
+
+export interface Unit {
+  unitId: string;
+  tenantId: string;
+  name: string; // "Hộp", "Chai", "Thùng", "Kg", "Gram", "Lon", "Ly"
+  symbol: string; // "hộp", "chai", "thùng", "kg", "g", "lon", "ly"
+  type: UnitType;
+  baseUnitId?: string;
+  conversionFactor?: number; // Conversion factor relative to base unit (e.g. 1 thùng = 24 chai -> 24)
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Category {
+  categoryId: string;
+  tenantId: string;
+  parentId?: string | null;
+  name: string;
+  code?: string;
+  description?: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Brand {
+  brandId: string;
+  tenantId: string;
+  name: string;
+  code?: string;
+  logo?: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type PriceListType = 'RETAIL' | 'WHOLESALE' | 'B2B' | 'POS' | 'FNB' | 'MARKETPLACE';
+
+export interface PriceList {
+  priceListId: string;
+  tenantId: string;
+  name: string;
+  code: string;
+  type: PriceListType;
+  currency: string;
+  isDefault?: boolean;
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PriceListItem {
+  id: string;
+  tenantId: string;
+  priceListId: string;
+  skuId: string;
+  price: number;
+  minQuantity?: number;
+  costPrice?: number;
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type SalesChannel =
+  | 'POS'
+  | 'TAKE_AWAY'
+  | 'WEBSITE'
+  | 'FACEBOOK'
+  | 'ZALO'
+  | 'SHOPEE'
+  | 'TIKTOK_SHOP'
+  | 'LAZADA'
+  | 'TIKI'
+  | 'GRABFOOD'
+  | 'SHOPEEFOOD'
+  | 'BEFOOD'
+  | 'AGENCY'
+  | 'B2B'
+  | 'WHOLESALE';
+
+export interface SKUChannelMapping {
+  id: string;
+  tenantId: string;
+  skuId: string;
+  channel: SalesChannel;
+  externalProductId?: string;
+  externalSkuId?: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'SYNCED' | 'FAILED';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ComboComponent {
+  comboId: string;
+  tenantId: string;
+  skuId: string; // SKU of the combo
+  componentSkuId: string; // Component SKU
+  quantity: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Product {
-  id: string;
+  // Canonical Master fields
   productId: string; // e.g. P000001, P000002
+  tenantId?: string; // Mandatory for tenant isolation
+  name: string; // Product Name e.g. "Sữa dừa UHT Vietcoco 330ml"
+  shortName?: string;
+  description?: string;
+  productType?: ProductType; // Canonical classification
+  categoryId?: string;
+  brandId?: string;
+  status?: ProductStatus;
+  image?: string;
+  tags?: string[];
+  trackLot?: boolean;
+  trackExpiry?: boolean;
+  shelfLifeDays?: number;
+  attributes?: CustomAttribute[] | Record<string, any>;
+  createdAt?: string;
+  updatedAt?: string;
+
+  // Backward compatibility fields for existing views & transaction modules:
+  id: string;
   code: string; // Product Code e.g. VCCCM330-UHT, THEP-MK-06
   productCode?: string; // Alias for code
   sku: string; // Variant SKU e.g. VCCCM330-UHT-C02, THEP-MK-06-HP
   variantSku?: string; // Alias for sku
-  name: string; // Product Name e.g. "Sữa dừa UHT Vietcoco 330ml"
   productName?: string; // Alias for name
   variant?: string; // e.g. "Combo 2 Hộp"
   variantName?: string; // Alias for variant
@@ -374,7 +638,7 @@ export interface Product {
   notes?: string;
   costPrice: number; // Next FIFO Layer cost price
   sellingPrice: number;
-  stock: number; // Sum of active layers' remainingQuantity
+  stock?: number; // Sum of active layers' remainingQuantity
   minStock: number;
   maxStock?: number;
   location: string;
@@ -384,7 +648,22 @@ export interface Product {
   supplierName: string;
   supplierId?: string;
   imageUrl?: string;
+  hasBom?: boolean;
+  recipeVersionId?: string;
   variants?: ProductVariant[];
+}
+
+export interface ProductAggregate {
+  product: Product;
+  category?: Category;
+  brand?: Brand;
+  variants: Variant[];
+  skus: SKU[];
+  barcodes: Barcode[];
+  units: Unit[];
+  priceListItems: PriceListItem[];
+  channelMappings: SKUChannelMapping[];
+  comboComponents: ComboComponent[];
 }
 
 export type LoyaltyTier = 'standard' | 'silver' | 'gold' | 'diamond';
@@ -796,9 +1075,13 @@ export interface PurchaseOrder {
   branchId?: string;
   branchName?: string;
   warehouseId?: string;
-  warehouse: string;
+  warehouse?: string;
+  warehouseName?: string;
+  orderDate?: string;
   deliveryDate?: string;
+  expectedDate?: string;
   createdAt: string;
+  createdBy?: string;
   totalAmount: number;
   paidAmount: number;
   debtAmount: number;
@@ -971,11 +1254,43 @@ export interface UserSession {
   isCurrent: boolean;
 }
 
+export interface FifoAllocationResult {
+  allocations: FIFOAllocation[];
+  totalCost: number;
+  totalAllocatedQty: number;
+  remainingUnallocated: number;
+  isSufficientStock: boolean;
+  updatedLayers: InventoryLayer[];
+}
+
+export interface StockIssueRequestItem {
+  sku: string;
+  productId?: string;
+  productName: string;
+  quantity: number;
+  salePrice?: number;
+  unit?: string;
+}
+
+export interface FifoIssueExecutionResult {
+  success: boolean;
+  errorMessage?: string;
+  allocations: FIFOAllocation[];
+  itemAllocationsMap: Record<string, FIFOAllocation[]>;
+  totalCogs: number;
+  totalRevenue: number;
+  updatedLayers: InventoryLayer[];
+  generatedTransactions: StockTransaction[];
+  auditLogs: AuditLog[];
+}
+
 export interface UserAccount {
   id: string;
+  tenantId?: string;
   username?: string;
   email: string;
-  name: string;
+  name?: string;
+  fullName?: string;
   phone?: string;
   passwordHash?: string;
   employeeCode?: string;
@@ -988,6 +1303,7 @@ export interface UserAccount {
   status: UserStatus;
   branchId?: string;
   branchName?: string;
+  assignedBranchIds?: string[];
   assignedWarehouseIds?: string[]; // e.g. ['ALL'] or ['WH01']
   directManagerId?: string; // ID người quản lý trực tiếp
   directManagerName?: string; // Tên người quản lý trực tiếp
@@ -2482,9 +2798,728 @@ export interface PaymentReconciliationItem {
   createdAt: string;
 }
 
+// =========================================================================
+// TRANSACTION ENGINE & DAILY TARGET & AD OPPORTUNITY TYPES
+// =========================================================================
 
+export type TransactionSource =
+  | 'ERP'
+  | 'SHOPEE'
+  | 'TIKTOK_SHOP'
+  | 'LAZADA'
+  | 'WEBSITE'
+  | 'POS'
+  | 'API'
+  | 'MANUAL';
 
+export type TransactionStatus =
+  | 'PENDING'
+  | 'CONFIRMED'
+  | 'CANCELLED'
+  | 'REFUNDED';
 
+export interface TransactionRecord {
+  id: string;
+  tenantId: string;
+  userId?: string;
+  type: 'SALE';
+  source: TransactionSource;
+  orderId?: string;
+  amount?: number;
+  currency?: string;
+  status: TransactionStatus;
+  createdAt: string;
+  confirmedAt?: string;
+  idempotencyKey: string;
+  metadata?: Record<string, any>;
+}
+
+export interface DailyTransactionConfig {
+  enabled: boolean;
+  min: number;
+  max: number;
+  maxPerDay?: number;
+  adaptiveAdOpportunity: boolean;
+  updatedAt: string;
+  updatedBy?: string;
+}
+
+export interface DailyTargetSnapshot {
+  tenantId: string;
+  date: string; // YYYY-MM-DD
+  target: number;
+  createdAt: string;
+}
+
+export type AdOpportunityLevel = 'HIGH' | 'NORMAL' | 'STOP';
+
+export interface AdOpportunitySignal {
+  level: AdOpportunityLevel;
+  enabled: boolean;
+  reason?: string;
+  currentTransactions: number;
+  dailyTarget: number;
+  maxPerDay: number;
+}
+
+export interface TransactionDashboardResponse {
+  success: boolean;
+  date: string;
+  target: {
+    min: number;
+    max: number;
+    today: number;
+  };
+  actual: number;
+  remaining: number;
+  progress: number;
+  status: 'IN_PROGRESS' | 'COMPLETED' | 'EXCEEDED' | 'DISABLED';
+  adOpportunity: {
+    level: AdOpportunityLevel;
+    enabled: boolean;
+    reason?: string;
+  };
+  metrics: {
+    sales: number;
+    revenue: number;
+    confirmed: number;
+    cancelled: number;
+    refunded: number;
+  };
+  recentTransactions?: TransactionRecord[];
+}
+
+export interface TransactionAuditEntry {
+  id: string;
+  tenantId: string;
+  actorId: string;
+  actorName?: string;
+  action:
+    | 'TRANSACTION_CREATED'
+    | 'TRANSACTION_CONFIRMED'
+    | 'TRANSACTION_CANCELLED'
+    | 'TRANSACTION_REFUNDED'
+    | 'TARGET_CREATED'
+    | 'TARGET_UPDATED'
+    | 'CONFIG_UPDATED'
+    | 'IDEMPOTENCY_DUPLICATE_HIT';
+  entityType: string;
+  entityId: string;
+  before?: any;
+  after?: any;
+  timestamp: string;
+  details?: string;
+}
+
+// =========================================================================
+// EXECUTIVE BUSINESS DASHBOARD (PHASE 1) VIEW MODEL TYPES
+// =========================================================================
+
+export interface ExecutivePrimaryKpi {
+  id: 'revenue' | 'orders' | 'gross_profit' | 'cash';
+  title: string;
+  actual: number;
+  previous: number;
+  changePercent: number;
+  trend: 'up' | 'down' | 'neutral';
+  formattedActual: string;
+  formattedPrevious: string;
+  subtitle?: string;
+}
+
+export interface RevenueOrdersChartPoint {
+  label: string;
+  fullDate?: string;
+  revenue: number;
+  orders: number;
+  aov: number;
+}
+
+export type BizOneSalesChannel =
+  | 'POS'
+  | 'TAKE_AWAY'
+  | 'WEBSITE'
+  | 'FACEBOOK'
+  | 'ZALO'
+  | 'SHOPEE'
+  | 'TIKTOK_SHOP'
+  | 'LAZADA'
+  | 'TIKI'
+  | 'GRABFOOD'
+  | 'SHOPEEFOOD'
+  | 'BEFOOD'
+  | 'AGENCY'
+  | 'B2B';
+
+export interface ChannelPerformanceMetric {
+  channelId: string;
+  name: string;
+  category: 'offline_pos' | 'direct_online' | 'marketplace' | 'food_delivery' | 'b2b_wholesale';
+  revenue: number;
+  orders: number;
+  contributionPercent: number;
+  avgOrderValue: number;
+}
+
+export interface ProductPerformanceMetric {
+  productId: string;
+  sku: string;
+  name: string;
+  category: string;
+  quantitySold: number;
+  revenue: number;
+  grossProfit: number;
+  unit: string;
+}
+
+export interface InventoryAgingBucketData {
+  bucketKey: InventoryAgingBucket;
+  label: string;
+  daysRange: string;
+  lotCount: number;
+  skuCount: number;
+  quantity: number;
+  fifoValue: number;
+  percentage: number;
+  lots: InventoryLayer[];
+}
+
+export interface InventorySnapshotData {
+  totalQuantity: number;
+  totalValue: number;
+  fifoValue: number;
+  lowStockCount: number;
+  agedStockCount: number;
+  agingBuckets: InventoryAgingBucketData[];
+}
+
+export interface FinanceSnapshotData {
+  grossRevenue: number;
+  discount: number;
+  refund: number;
+  netRevenue: number;
+  cogs: number;
+  grossProfit: number;
+  grossMarginPercent: number;
+  receivable: number;
+  payable: number;
+  isDataSufficient: boolean;
+}
+
+export interface MarketplaceFinanceItem {
+  channelId: string;
+  channelName: string;
+  grossSales: number;
+  marketplaceCost: number;
+  netSettlement: number;
+  cogs: number;
+  realizedGrossProfit: number;
+  status: 'ACTUAL' | 'ESTIMATED' | 'RECONCILED' | 'NOT_AVAILABLE';
+  reconciliationNote?: string;
+  estimatedPlatformFeeRate?: number;
+}
+
+export interface CrmSnapshotData {
+  newCustomersCount: number;
+  returningCustomersCount: number;
+  returningOrdersPercent: number;
+  returningOrdersCount: number;
+  aov: number;
+  topCustomer?: {
+    id: string;
+    name: string;
+    phone?: string;
+    totalSpent: number;
+    orderCount: number;
+  };
+}
+
+export interface ExecutiveAlertItem {
+  id: string;
+  type:
+    | 'low_stock'
+    | 'aged_stock'
+    | 'expiring_soon'
+    | 'overdue_debt'
+    | 'unprocessed_order'
+    | 'failed_order'
+    | 'discrepancy'
+    | 'margin_drop';
+  severity: 'critical' | 'warning' | 'info';
+  title: string;
+  description: string;
+  countOrValue: string;
+  targetModule: string;
+  targetFilter?: string;
+}
+
+export interface DashboardViewModel {
+  period: 'today' | '7days' | 'month' | 'quarter' | 'year' | 'custom';
+  periodLabel: string;
+  kpis: {
+    revenue: ExecutivePrimaryKpi;
+    orders: ExecutivePrimaryKpi;
+    grossProfit: ExecutivePrimaryKpi;
+    cash: ExecutivePrimaryKpi;
+  };
+  revenueChart: {
+    granularity: 'day' | 'week' | 'month';
+    data: RevenueOrdersChartPoint[];
+    totalRevenue: number;
+    totalOrders: number;
+    averageOrderValue: number;
+  };
+  channels: ChannelPerformanceMetric[];
+  products: {
+    topSelling: ProductPerformanceMetric[];
+    topRevenue: ProductPerformanceMetric[];
+    topProfit: ProductPerformanceMetric[];
+  };
+  inventory: InventorySnapshotData;
+  finance: FinanceSnapshotData;
+  marketplaceFinance: MarketplaceFinanceItem[];
+  crm: CrmSnapshotData;
+  alerts: ExecutiveAlertItem[];
+}
+
+// =========================================================================
+// PHASE 2.1 — USER CORE BACKEND DOMAIN MODELS & SECURITY ARCHITECTURE
+// =========================================================================
+
+export type TenantBusinessType = 'HOUSEHOLD_BUSINESS' | 'COMPANY' | 'INDIVIDUAL';
+export type TenantCoreStatus = 'active' | 'suspended' | 'pending' | 'inactive';
+
+export interface TenantCore {
+  tenantId: string;
+  businessName: string;
+  businessType: TenantBusinessType;
+  taxCode?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  status: TenantCoreStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BranchCore {
+  branchId: string;
+  tenantId: string;
+  name: string;
+  code: string;
+  address: string;
+  phone: string;
+  managerId?: string;
+  status: 'active' | 'inactive';
+  createdAt: string;
+  updatedAt: string;
+  isMain?: boolean;
+}
+
+export type WarehouseCoreType =
+  | 'MAIN_WAREHOUSE'
+  | 'STORE_WAREHOUSE'
+  | 'RAW_MATERIAL'
+  | 'FINISHED_GOODS'
+  | 'FNB'
+  | 'OTHER';
+
+export interface WarehouseCore {
+  warehouseId: string;
+  tenantId: string;
+  branchId: string;
+  name: string;
+  code: string;
+  type: WarehouseCoreType;
+  managerId?: string;
+  status: 'active' | 'inactive';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type UserCoreStatus = 'active' | 'inactive' | 'locked';
+
+export interface UserCore {
+  userId: string;
+  tenantId: string;
+  name: string;
+  email: string;
+  phone: string;
+  roleId: string;
+  branchIds: string[];
+  warehouseIds: string[];
+  status: UserCoreStatus;
+  createdAt: string;
+  updatedAt: string;
+  passwordHash?: string;
+}
+
+export type StandardRoleCode =
+  | 'OWNER'
+  | 'CEO'
+  | 'DIRECTOR'
+  | 'MANAGER'
+  | 'STAFF'
+  | 'WAREHOUSE_STAFF'
+  | 'SALES'
+  | 'CSKH'
+  | 'ACCOUNTING';
+
+export type DataScopeType =
+  | 'COMPANY_WIDE'
+  | 'DIVISION'
+  | 'BRANCH'
+  | 'WAREHOUSE'
+  | 'INDIVIDUAL';
+
+export interface RoleCore {
+  roleId: string;
+  tenantId?: string; // Undefined for global system roles, string for tenant-custom roles
+  code: StandardRoleCode | string;
+  name: string;
+  description: string;
+  isSystemRole: boolean;
+  permissions: string[]; // Format: 'module.action' e.g. 'order.create', 'finance.view'
+  dataScope: DataScopeType;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PermissionDefinition {
+  key: string; // e.g. 'order.create'
+  module: string; // e.g. 'order'
+  action: string; // e.g. 'create'
+  name: string;
+  description: string;
+}
+
+export interface SecurityUserContext {
+  userId: string;
+  tenantId: string;
+  name: string;
+  email: string;
+  roleId: string;
+  roleCode: StandardRoleCode | string;
+  dataScope: DataScopeType;
+  permissions: Set<string>;
+  branchIds: string[];
+  warehouseIds: string[];
+}
+
+export interface DataScopeFilterCriteria {
+  tenantId: string;
+  branchId?: string | string[];
+  warehouseId?: string | string[];
+  createdBy?: string;
+  assignedTo?: string;
+}
+
+export interface AuditLogCore {
+  auditId: string;
+  tenantId: string;
+  userId: string;
+  action: string;
+  module: string;
+  entityType: string;
+  entityId: string;
+  timestamp: string;
+  ip?: string;
+  metadata?: Record<string, any>;
+}
+
+// =========================================================================
+// PHASE 2.4 — TEMPORAL BUSINESS ENGINE + F&B OPERATION TYPES
+// =========================================================================
+
+export type VersionStatus = 'ACTIVE' | 'SUPERSEDED' | 'DRAFT' | 'ARCHIVED';
+
+export interface EffectiveDatedEntity {
+  versionId: string;
+  version: number;
+  effectiveFrom: string; // ISO string or YYYY-MM-DD
+  effectiveTo: string | null; // ISO string or YYYY-MM-DD or null if currently active
+  status: VersionStatus;
+  createdAt: string;
+  createdBy: string;
+  supersedesVersionId?: string;
+  tenantId: string;
+}
+
+export type TemporalResolutionStatus = 'SUCCESS' | 'NOT_AVAILABLE' | 'INTEGRITY_VIOLATION';
+
+export interface TemporalResolutionResult<T> {
+  status: TemporalResolutionStatus;
+  version: T | null;
+  resolvedAt: string;
+  errorMessage?: string;
+}
+
+// 1. Selling Price Versioning
+export interface SellingPriceVersion extends EffectiveDatedEntity {
+  productId: string;
+  sku: string;
+  productName?: string;
+  priceListId?: string;
+  channel?: SalesChannel | 'ALL';
+  price: number;
+  currency: string;
+  minQuantity?: number;
+  note?: string;
+}
+
+// 2. Purchase Cost Record (Historical Cost Inward)
+export interface PurchaseCostRecord {
+  recordId: string;
+  tenantId: string;
+  sku: string;
+  productId: string;
+  productName: string;
+  supplierId: string;
+  supplierName: string;
+  purchaseDocId: string;
+  purchaseDocCode: string;
+  purchaseDate: string;
+  receivedDate: string;
+  unitCost: number;
+  quantity: number;
+  unit: string;
+  currency: string;
+  vatRate?: number;
+  vatAmount?: number;
+  landedCost?: number;
+  fifoLayerId?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+// 3. Recipe / BOM Component
+export type ConsumptionPolicy = 'PER_TRANSACTION' | 'ACCUMULATED_THRESHOLD';
+
+export interface RecipeComponent {
+  componentId: string;
+  componentSku: string;
+  componentProductId?: string;
+  componentName: string;
+  componentType: 'RAW_MATERIAL' | 'FNB_INGREDIENT' | 'SEMI_FINISHED' | 'PACKAGING' | 'OTHER';
+  quantity: number; // e.g. 80ml, 40g
+  unit: string;
+  lossPercent?: number; // % hao hụt (e.g. 5%)
+  standardCost?: number; // Đơn giá vốn tiêu chuẩn dự kiến
+  subtotalCost?: number; // quantity * standardCost * (1 + loss/100)
+  consumptionPolicy?: ConsumptionPolicy;
+  consumptionThreshold?: number; // Ngưỡng tích lũy (e.g. 500g)
+  notes?: string;
+}
+
+export interface RecipePackaging {
+  packagingSku: string;
+  packagingName: string;
+  quantity: number;
+  unit: string;
+  standardCost?: number;
+  consumptionPolicy?: ConsumptionPolicy;
+}
+
+// 4. Recipe Versioning (Effective-Dated)
+export interface RecipeVersion extends EffectiveDatedEntity {
+  recipeId: string;
+  productSku: string;
+  productId: string;
+  productName: string;
+  recipeCode: string;
+  name: string;
+  description?: string;
+  yieldQuantity: number; // e.g. 1 (1 ly) or 400 (400ml cốt)
+  yieldUnit: string;
+  components: RecipeComponent[];
+  packaging?: RecipePackaging[];
+  preparationSteps?: string[];
+  estimatedStandardCost: number;
+  isReferencedByTransactions?: boolean;
+}
+
+// 5. Preparation / Semi-Finished Batch
+export interface PreparationBatchInput {
+  sku: string;
+  productName: string;
+  quantity: number;
+  unit: string;
+  unitCost?: number;
+  totalCost?: number;
+  fifoAllocations?: FIFOAllocation[];
+}
+
+export interface PreparationBatch {
+  batchId: string;
+  code: string; // e.g. BATCH-20260825-001
+  tenantId: string;
+  branchId: string;
+  branchName?: string;
+  warehouseId: string;
+  warehouseName?: string;
+  recipeVersionId: string;
+  recipeCode?: string;
+  outputSku: string;
+  outputProductName: string;
+  plannedOutputQty: number;
+  actualOutputQty: number;
+  outputUnit: string;
+  inputMaterials: PreparationBatchInput[];
+  totalBatchCost: number;
+  unitBatchCost: number;
+  producedAt: string;
+  expiryDate?: string;
+  operator: string;
+  operatorId?: string;
+  status: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+  createdLayerId?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+// 6. Consumption Ledger & Accumulation
+export interface ConsumptionEvent {
+  eventId: string;
+  tenantId: string;
+  orderId: string;
+  orderCode: string;
+  orderItemId: string;
+  productSku: string;
+  productName: string;
+  recipeVersionId?: string;
+  componentSku: string;
+  componentName: string;
+  quantity: number;
+  unit: string;
+  branchId: string;
+  warehouseId: string;
+  occurredAt: string;
+  consumptionPolicy: ConsumptionPolicy;
+  status: 'RECORDED' | 'PROCESSED' | 'ACCUMULATED' | 'ISSUED';
+  stockTransactionId?: string;
+  idempotencyKey?: string;
+  createdAt: string;
+}
+
+export interface AccumulatedConsumptionState {
+  id: string;
+  tenantId: string;
+  warehouseId: string;
+  sku: string;
+  unit: string;
+  thresholdQuantity: number;
+  accumulatedQuantity: number; // Tổng tích lũy hiện thời
+  pendingQuantity: number; // Phần dư sau khi đã trigger ngưỡng (remainder)
+  totalIssuedQuantity: number; // Tổng số lượng đã tạo phiếu xuất kho thực tế
+  lastIssuedAt?: string;
+  updatedAt: string;
+}
+
+// 7. Transaction Snapshot (Immutable Historical Record)
+export interface OrderItemSnapshot {
+  itemIndex: number;
+  productId: string;
+  sku: string;
+  productName: string;
+  productType?: ProductType;
+  categoryName?: string;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  discountAmount?: number;
+  priceVersionId?: string;
+  recipeVersionId?: string;
+  recipeSnapshot?: {
+    recipeId: string;
+    version: number;
+    recipeCode: string;
+    components: RecipeComponent[];
+  };
+  fifoAllocations: FIFOAllocation[];
+  actualFifoCost: number;
+  expectedStandardCost: number;
+  costVariance: number; // actualFifoCost - expectedStandardCost
+  grossProfit: number; // totalPrice - actualFifoCost
+  grossMarginPercent: number; // (grossProfit / totalPrice) * 100
+}
+
+export interface OrderTransactionSnapshot {
+  orderId: string;
+  orderCode: string;
+  snapshotTimestamp: string;
+  tenantId: string;
+  branchId: string;
+  warehouseId: string;
+  totalRevenue: number;
+  totalActualCogs: number;
+  totalStandardCogs: number;
+  cogsVariance: number;
+  grossProfit: number;
+  grossMarginPercent: number;
+  items: OrderItemSnapshot[];
+  isFinalized: boolean;
+}
+
+// 8. Sales Return & Refund
+export interface SalesRefundItem {
+  sku: string;
+  productId: string;
+  productName: string;
+  unit: string;
+  quantity: number;
+  refundUnitPrice: number;
+  totalRefund: number;
+  restockToInventory: boolean;
+  warehouseId?: string;
+  condition?: 'good' | 'damaged';
+  reason?: string;
+}
+
+export interface SalesReturn {
+  id: string;
+  returnCode: string; // e.g. TH-2026-001
+  orderId: string;
+  orderCode: string;
+  tenantId: string;
+  branchId?: string;
+  branchName?: string;
+  warehouseId?: string;
+  warehouseName?: string;
+  customerName: string;
+  customerPhone?: string;
+  refundAmount: number;
+  paymentMethod: PaymentMethod;
+  refundStatus: 'completed' | 'processing' | 'rejected';
+  reason: string;
+  items: SalesRefundItem[];
+  createdAt: string;
+  creator: string;
+  notes?: string;
+  restockedLayerIds?: string[];
+}
+
+// 9. Workspace / Tab Navigation
+export interface WorkspaceTab {
+  id: string;
+  title: string;
+  viewMode: ViewMode;
+  closable: boolean;
+  badge?: string | number;
+  filterContext?: {
+    channel?: string;
+    agingBucket?: string;
+    productSku?: string;
+    category?: string;
+    startDate?: string;
+    endDate?: string;
+    branchId?: string;
+    warehouseId?: string;
+    customerName?: string;
+    debtOnly?: boolean;
+    searchTerm?: string;
+  };
+}
 
 
 

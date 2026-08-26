@@ -33,6 +33,7 @@ interface HeaderProps {
   onChangeCurrentUser?: (user: UserAccount) => void;
   onLogout?: () => void;
   onNavigateToSettings?: () => void;
+  onOpenDesignSystem?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -46,7 +47,8 @@ export const Header: React.FC<HeaderProps> = ({
   users = [],
   onChangeCurrentUser,
   onLogout,
-  onNavigateToSettings
+  onNavigateToSettings,
+  onOpenDesignSystem
 }) => {
   const { language, setLanguage, t } = useLanguage();
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
@@ -156,6 +158,19 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="h-5 w-px bg-slate-200 hidden sm:block"></div>
+
+        {/* UI Foundation & Design System Showcase */}
+        {onOpenDesignSystem && (
+          <button
+            id="btn-design-system-header"
+            onClick={onOpenDesignSystem}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 rounded-lg border border-slate-200/80 transition-colors cursor-pointer"
+            title="UI Foundation & Design System Guidelines"
+          >
+            <Layers className="w-3.5 h-3.5 text-slate-600" />
+            <span className="hidden md:inline">Design System</span>
+          </button>
+        )}
 
         {/* Notifications with Backdrop Overlay */}
         <div className="relative">

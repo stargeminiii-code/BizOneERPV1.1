@@ -1837,16 +1837,359 @@ export const initialProducts: Product[] = [
     location: 'KHO-D3-02',
     isLowStock: true,
     supplierName: 'Sơn Đại Bàng'
+  },
+  {
+    id: 'p-fb-01',
+    productId: 'P000015',
+    code: 'DU-MATCHA-LATTE',
+    productCode: 'DU-MATCHA-LATTE',
+    sku: 'DU-MATCHA-LATTE',
+    variantSku: 'DU-MATCHA-LATTE-M',
+    name: 'Matcha Latte Sữa Tươi Uji',
+    productName: 'Matcha Latte Sữa Tươi Uji',
+    variant: 'Ly Size M (500ml)',
+    variantName: 'Ly Size M (500ml)',
+    category: 'F&B - Đồ uống & Pha chế',
+    brand: 'BizOne F&B House',
+    unit: 'ly',
+    packSize: 'Ly giấy Kraft 500ml',
+    note: 'Bột Matcha Uji chuẩn Nhật, sữa tươi thanh trùng Dalatmilk',
+    costPrice: 15400,
+    sellingPrice: 55000,
+    stock: 999,
+    minStock: 50,
+    location: 'QUAY-BAR-01',
+    isLowStock: false,
+    supplierName: 'Nội bộ F&B',
+    hasBom: true,
+    productType: 'BEVERAGE'
+  },
+  {
+    id: 'p-fb-02',
+    productId: 'P000016',
+    code: 'DU-CF-MUOI',
+    productCode: 'DU-CF-MUOI',
+    sku: 'DU-CF-MUOI',
+    variantSku: 'DU-CF-MUOI-M',
+    name: 'Cà Phê Muối Biển Kem Béo',
+    productName: 'Cà Phê Muối Biển Kem Béo',
+    variant: 'Ly Chuẩn Quầy',
+    variantName: 'Ly Chuẩn Quầy',
+    category: 'F&B - Đồ uống & Pha chế',
+    brand: 'BizOne F&B House',
+    unit: 'ly',
+    packSize: 'Ly 350ml',
+    note: 'Robusta Lâm Đồng pha phin, lớp kem mặn béo ngậy hảo hạng',
+    costPrice: 10200,
+    sellingPrice: 38000,
+    stock: 999,
+    minStock: 50,
+    location: 'QUAY-BAR-01',
+    isLowStock: false,
+    supplierName: 'Nội bộ F&B',
+    hasBom: true,
+    productType: 'BEVERAGE'
+  },
+  {
+    id: 'p-fb-03',
+    productId: 'P000017',
+    code: 'DU-TRA-HOAVANG-COLDBREW',
+    productCode: 'DU-TRA-HOAVANG-COLDBREW',
+    sku: 'DU-TRA-HOAVANG',
+    variantSku: 'DU-TRA-HOAVANG-330ML',
+    name: 'Trà Hoa Vàng Coldbrew Mật Ong',
+    productName: 'Trà Hoa Vàng Coldbrew Mật Ong',
+    variant: 'Chai Thủy Tinh 330ml',
+    variantName: 'Chai Thủy Tinh 330ml',
+    category: 'F&B - Đồ uống & Pha chế',
+    brand: 'BizOne F&B House',
+    unit: 'chai',
+    packSize: 'Chai 330ml',
+    note: 'Trà hoa vàng Ba Chẽ ủ lạnh 16h với mật ong rừng nguyên chất',
+    costPrice: 19800,
+    sellingPrice: 65000,
+    stock: 999,
+    minStock: 30,
+    location: 'QUAY-BAR-01',
+    isLowStock: false,
+    supplierName: 'Nội bộ F&B',
+    hasBom: true,
+    productType: 'BEVERAGE'
+  },
+  {
+    id: 'p-fb-04',
+    productId: 'P000018',
+    code: 'DU-SINHTO-BO-034',
+    productCode: 'DU-SINHTO-BO-034',
+    sku: 'DU-SINHTO-BO-034',
+    variantSku: 'DU-SINHTO-BO-500ML',
+    name: 'Sinh Tố Bơ 034 Sữa Hạt Macca',
+    productName: 'Sinh Tố Bơ 034 Sữa Hạt Macca',
+    variant: 'Ly 500ml',
+    variantName: 'Ly 500ml',
+    category: 'F&B - Đồ uống & Pha chế',
+    brand: 'BizOne F&B House',
+    unit: 'ly',
+    packSize: 'Ly 500ml',
+    note: 'Bơ sáp Đắk Lắk dẻo béo cùng sữa hạt macca bổ dưỡng',
+    costPrice: 16800,
+    sellingPrice: 59000,
+    stock: 999,
+    minStock: 20,
+    location: 'QUAY-BAR-01',
+    isLowStock: false,
+    supplierName: 'Nội bộ F&B',
+    hasBom: true,
+    productType: 'BEVERAGE'
   }
 ];
 
 export const initialOrders: Order[] = [
+  {
+    id: 'ord-1030',
+    code: 'ORD-2026-1030',
+    customerName: 'Cafe Sáng Hoàng Cầu',
+    customerPhone: '0934 112 233',
+    customerAddress: '72 Hoàng Cầu, Đống Đa, Hà Nội',
+    branchId: 'BR01',
+    warehouseId: 'WH01',
+    channel: 'GrabFood',
+    items: [
+      {
+        productId: 'P000001',
+        productName: 'Sữa dừa UHT Vietcoco 330ml (Thùng 24 hộp)',
+        sku: 'VCCCM330-UHT-C24',
+        quantity: 5,
+        unit: 'thùng',
+        unitPrice: 360000,
+        totalPrice: 1800000,
+        fifoCost: 1400000
+      },
+      {
+        productId: 'P000003',
+        productName: 'Cafe Đen Pha Sẵn Đậm Vị OCOP (Chai 500ml)',
+        sku: 'CF-DEN-500ML',
+        quantity: 10,
+        unit: 'chai',
+        unitPrice: 65000,
+        totalPrice: 650000,
+        fifoCost: 420000
+      }
+    ],
+    subtotal: 2450000,
+    discount: 50000,
+    tax: 0,
+    totalAmount: 2400000,
+    cogs: 1820000,
+    grossProfit: 580000,
+    status: 'completed',
+    paymentMethod: 'vietqr',
+    paymentStatus: 'paid',
+    createdAt: '2026-08-16 11:20',
+    creator: 'GrabFood Online System',
+    fifoDeductions: [
+      { sku: 'VCCCM330-UHT-C24', lotId: 'LOT-20260801-01', quantity: 5, costPrice: 280000 }
+    ]
+  },
+  {
+    id: 'ord-1029',
+    code: 'ORD-2026-1029',
+    customerName: 'Nguyễn Văn Minh (Shopee)',
+    customerPhone: '0987 654 321',
+    customerAddress: 'Tòa Landmark 81, Bình Thạnh, TP.HCM',
+    branchId: 'BR02',
+    warehouseId: 'WH02',
+    channel: 'Shopee',
+    items: [
+      {
+        productId: 'P000002',
+        productName: 'Gạo ST25 Sóc Trăng Thượng Hạng OCOP (Túi 5kg)',
+        sku: 'GAO-ST25-5KG',
+        quantity: 4,
+        unit: 'túi',
+        unitPrice: 195000,
+        totalPrice: 780000,
+        fifoCost: 560000
+      },
+      {
+        productId: 'P000001',
+        productName: 'Nước dừa tươi đóng lon 330ml (Lốc 6 lon)',
+        sku: 'VCC-ND-330-L06',
+        quantity: 2,
+        unit: 'lốc',
+        unitPrice: 90000,
+        totalPrice: 180000,
+        fifoCost: 130000
+      }
+    ],
+    subtotal: 960000,
+    discount: 40000,
+    tax: 0,
+    totalAmount: 920000,
+    cogs: 690000,
+    grossProfit: 230000,
+    status: 'completed',
+    paymentMethod: 'bank_transfer',
+    paymentStatus: 'paid',
+    createdAt: '2026-08-16 09:15',
+    creator: 'Shopee Enterprise Mall',
+    fifoDeductions: [
+      { sku: 'GAO-ST25-5KG', lotId: 'LOT-20260802-01', quantity: 4, costPrice: 140000 }
+    ]
+  },
+  {
+    id: 'ord-1028',
+    code: 'ORD-2026-1028',
+    customerName: 'Lê Thị Thu Hương (TikTok)',
+    customerPhone: '0918 223 344',
+    customerAddress: 'Quận Cầu Giấy, Hà Nội',
+    branchId: 'BR01',
+    warehouseId: 'WH01',
+    channel: 'TikTok Shop',
+    items: [
+      {
+        productId: 'P000004',
+        productName: 'Sữa Hạt Macca Hạnh Nhân Nguyên Chất 1L (Hộp)',
+        sku: 'SH-MACCA-1L',
+        quantity: 6,
+        unit: 'hộp',
+        unitPrice: 110000,
+        totalPrice: 660000,
+        fifoCost: 480000
+      }
+    ],
+    subtotal: 660000,
+    discount: 0,
+    tax: 0,
+    totalAmount: 660000,
+    cogs: 480000,
+    grossProfit: 180000,
+    status: 'completed',
+    paymentMethod: 'vietqr',
+    paymentStatus: 'paid',
+    createdAt: '2026-08-16 08:30',
+    creator: 'TikTok Shop Live Bot',
+    fifoDeductions: [
+      { sku: 'SH-MACCA-1L', lotId: 'LOT-20260805-01', quantity: 6, costPrice: 80000 }
+    ]
+  },
+  {
+    id: 'ord-1027',
+    code: 'ORD-2026-1027',
+    customerName: 'Chuỗi Trà Sữa & Cafe Urban Tea',
+    customerPhone: '0909 998 877',
+    customerAddress: '15 Võ Văn Tần, Quận 3, TP.HCM',
+    branchId: 'BR02',
+    warehouseId: 'WH02',
+    channel: 'POS',
+    items: [
+      {
+        productId: 'P000001',
+        productName: 'Sữa dừa UHT Vietcoco 330ml (Thùng 24 hộp)',
+        sku: 'VCCCM330-UHT-C24',
+        quantity: 20,
+        unit: 'thùng',
+        unitPrice: 350000,
+        totalPrice: 7000000,
+        fifoCost: 5600000
+      }
+    ],
+    subtotal: 7000000,
+    discount: 200000,
+    tax: 0,
+    totalAmount: 6800000,
+    cogs: 5600000,
+    grossProfit: 1200000,
+    status: 'completed',
+    paymentMethod: 'vietqr',
+    paymentStatus: 'paid',
+    createdAt: '2026-08-15 16:40',
+    creator: 'Nguyễn Thu Thảo (POS)',
+    fifoDeductions: [
+      { sku: 'VCCCM330-UHT-C24', lotId: 'LOT-20260801-01', quantity: 20, costPrice: 280000 }
+    ]
+  },
+  {
+    id: 'ord-1026',
+    code: 'ORD-2026-1026',
+    customerName: 'Trần Đình Trọng (Website)',
+    customerPhone: '0977 123 789',
+    customerAddress: 'Phường Bến Nghé, Quận 1, TP.HCM',
+    branchId: 'BR02',
+    warehouseId: 'WH02',
+    channel: 'Website',
+    items: [
+      {
+        productId: 'P000002',
+        productName: 'Gạo ST25 Sóc Trăng Thượng Hạng OCOP (Túi 5kg)',
+        sku: 'GAO-ST25-5KG',
+        quantity: 5,
+        unit: 'túi',
+        unitPrice: 195000,
+        totalPrice: 975000,
+        fifoCost: 700000
+      }
+    ],
+    subtotal: 975000,
+    discount: 0,
+    tax: 0,
+    totalAmount: 975000,
+    cogs: 700000,
+    grossProfit: 275000,
+    status: 'completed',
+    paymentMethod: 'vietqr',
+    paymentStatus: 'paid',
+    createdAt: '2026-08-15 14:10',
+    creator: 'Website Storefront',
+    fifoDeductions: [
+      { sku: 'GAO-ST25-5KG', lotId: 'LOT-20260802-01', quantity: 5, costPrice: 140000 }
+    ]
+  },
+  {
+    id: 'ord-1025',
+    code: 'ORD-2026-1025',
+    customerName: 'Bách Hóa Nông Sản Sạch Xanh',
+    customerPhone: '0938 555 444',
+    customerAddress: 'Khu Đô Thị Ecopark, Hưng Yên',
+    branchId: 'BR01',
+    warehouseId: 'WH01',
+    channel: 'Zalo',
+    items: [
+      {
+        productId: 'P000004',
+        productName: 'Sữa Hạt Macca Hạnh Nhân Nguyên Chất 1L (Thùng 12 hộp)',
+        sku: 'SH-MACCA-1L-T12',
+        quantity: 10,
+        unit: 'thùng',
+        unitPrice: 1200000,
+        totalPrice: 12000000,
+        fifoCost: 9600000
+      }
+    ],
+    subtotal: 12000000,
+    discount: 500000,
+    tax: 0,
+    totalAmount: 11500000,
+    cogs: 9600000,
+    grossProfit: 1900000,
+    status: 'completed',
+    paymentMethod: 'bank_transfer',
+    paymentStatus: 'paid',
+    createdAt: '2026-08-15 10:25',
+    creator: 'Zalo OA Sales Bot',
+    fifoDeductions: [
+      { sku: 'SH-MACCA-1L-T12', lotId: 'LOT-20260805-01', quantity: 10, costPrice: 960000 }
+    ]
+  },
   {
     id: 'ord-1024',
     code: 'ORD-2026-1024',
     customerName: 'CTY CP Vạn Phát',
     customerPhone: '0908 123 456',
     customerAddress: 'Khu CN Tân Bình, TP.HCM',
+    branchId: 'BR02',
+    warehouseId: 'WH02',
+    channel: 'B2B',
     items: [
       {
         productId: 'p-1',
@@ -1891,6 +2234,9 @@ export const initialOrders: Order[] = [
     customerName: 'Công ty TNHH Cơ Khí Đại Nam',
     customerPhone: '0912 888 999',
     customerAddress: 'Khu công nghệ cao, TP. Thủ Đức',
+    branchId: 'BR02',
+    warehouseId: 'WH02',
+    channel: 'B2B',
     items: [
       {
         productId: 'p-2',
@@ -1935,6 +2281,9 @@ export const initialOrders: Order[] = [
     customerName: 'Cửa hàng VLXD Phúc Thịnh',
     customerPhone: '0933 456 789',
     customerAddress: 'Quận 12, TP.HCM',
+    branchId: 'BR02',
+    warehouseId: 'WH02',
+    channel: 'Wholesale',
     items: [
       {
         productId: 'p-3',
@@ -1968,6 +2317,9 @@ export const initialOrders: Order[] = [
     customerName: 'Công ty TNHH Xây Dựng ABC',
     customerPhone: '0988 777 666',
     customerAddress: 'Bình Tân, TP.HCM',
+    branchId: 'BR02',
+    warehouseId: 'WH02',
+    channel: 'Wholesale',
     items: [
       {
         productId: 'p-6',
@@ -2001,6 +2353,9 @@ export const initialOrders: Order[] = [
     customerName: 'Xưởng Sản Xuất Minh Trí',
     customerPhone: '0903 555 111',
     customerAddress: 'Dĩ An, Bình Dương',
+    branchId: 'BR02',
+    warehouseId: 'WH02',
+    channel: 'B2B',
     items: [
       {
         productId: 'p-7',

@@ -83,6 +83,7 @@ import {
   calculateBottomUpMetrics
 } from '../../data/managementReportingData';
 import { exportCustomersToExcel, exportTasksToExcel } from '../../utils/excelEngine';
+import { DailyTransactionTargetWidget } from './DailyTransactionTargetWidget';
 
 interface MultiLevelManagementDashboardProps {
   orders: Order[];
@@ -651,6 +652,12 @@ export const MultiLevelManagementDashboard: React.FC<MultiLevelManagementDashboa
       {/* 3. TAB 1: OVERVIEW - MÀN HÌNH ĐIỀU HÀNH TRỰC QUAN DUY NHẤT */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
+          {/* Daily Transaction Engine & Target Widget */}
+          <DailyTransactionTargetWidget
+            currentUser={currentUser}
+            onNavigateToOrders={() => onNavigateToView && onNavigateToView('orders')}
+          />
+
           {/* Actionable Alerts & Drill-down Triggers */}
           <div className="flex flex-wrap items-center gap-2.5">
             <span className="text-xs font-bold text-slate-500 flex items-center gap-1.5 mr-1">

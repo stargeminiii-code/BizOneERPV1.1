@@ -6,6 +6,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
+import { createCoreApiRouter } from './src/api/coreApiRoutes';
 
 dotenv.config();
 
@@ -3160,6 +3161,600 @@ Hãy trả lời chuyên nghiệp, thân thiện, súc tích bằng Tiếng Vi�
       });
     }
   });
+
+  // =========================================================================
+  // TRANSACTION ENGINE + DAILY TARGET + AD OPPORTUNITY (DASHBOARD SYSTEM 2)
+  // =========================================================================
+
+  interface ServerTransactionRecord {
+    id: string;
+    tenantId: string;
+    userId?: string;
+    type: 'SALE';
+    source: 'ERP' | 'SHOPEE' | 'TIKTOK_SHOP' | 'LAZADA' | 'WEBSITE' | 'POS' | 'API' | 'MANUAL';
+    orderId?: string;
+    amount?: number;
+    currency?: string;
+    status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'REFUNDED';
+    createdAt: string;
+    confirmedAt?: string;
+    idempotencyKey: string;
+    metadata?: Record<string, any>;
+  }
+
+  interface ServerDailyConfig {
+    enabled: boolean;
+    min: number;
+    max: number;
+    maxPerDay?: number;
+    adaptiveAdOpportunity: boolean;
+    updatedAt: string;
+    updatedBy?: string;
+  }
+
+  interface ServerDailySnapshot {
+    tenantId: string;
+    date: string; // YYYY-MM-DD
+    target: number;
+    createdAt: string;
+  }
+
+  interface ServerTxAuditEntry {
+    id: string;
+    tenantId: string;
+    actorId: string;
+    actorName?: string;
+    action:
+      | 'TRANSACTION_CREATED'
+      | 'TRANSACTION_CONFIRMED'
+      | 'TRANSACTION_CANCELLED'
+      | 'TRANSACTION_REFUNDED'
+      | 'TARGET_CREATED'
+      | 'TARGET_UPDATED'
+      | 'CONFIG_UPDATED'
+      | 'IDEMPOTENCY_DUPLICATE_HIT';
+    entityType: string;
+    entityId: string;
+    before?: any;
+    after?: any;
+    timestamp: string;
+    details?: string;
+  }
+
+  // Load persistent JSON stores
+  const SERVER_TRANSACTIONS: ServerTransactionRecord[] = loadDataStore<ServerTransactionRecord[]>(
+    'transactions.json',
+    []
+  );
+
+  const SERVER_TRANSACTION_CONFIGS: Record<string, ServerDailyConfig> = loadDataStore<Record<string, ServerDailyConfig>>(
+    'transaction_configs.json',
+    {}
+  );
+
+  const SERVER_TARGET_SNAPSHOTS: Record<string, ServerDailySnapshot> = loadDataStore<Record<string, ServerDailySnapshot>>(
+    'transaction_daily_snapshots.json',
+    {}
+  );
+
+  const SERVER_TX_AUDIT_LOGS: ServerTxAuditEntry[] = loadDataStore<ServerTxAuditEntry[]>(
+    'transaction_audit_logs.json',
+    []
+  );
+
+  function recordTxAudit(entry: Omit<ServerTxAuditEntry, 'id' | 'timestamp'>): void {
+    const newLog: ServerTxAuditEntry = {
+      ...entry,
+      id: `tx_aud_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      timestamp: new Date().toISOString()
+    };
+    SERVER_TX_AUDIT_LOGS.unshift(newLog);
+    if (SERVER_TX_AUDIT_LOGS.length > 2000) {
+      SERVER_TX_AUDIT_LOGS.length = 2000;
+    }
+    saveDataStore('transaction_audit_logs.json', SERVER_TX_AUDIT_LOGS);
+  }
+
+  function getTenantTransactionConfig(tenantId: string): ServerDailyConfig {
+    const key = tenantId || 'enterprise';
+    if (SERVER_TRANSACTION_CONFIGS[key]) {
+      return SERVER_TRANSACTION_CONFIGS[key];
+    }
+    // Default config: min 4, max 6, maxPerDay 6, adaptive true
+    const defaultConfig: ServerDailyConfig = {
+      enabled: true,
+      min: 4,
+      max: 6,
+      maxPerDay: 6,
+      adaptiveAdOpportunity: true,
+      updatedAt: new Date().toISOString(),
+      updatedBy: 'System Bootstrap'
+    };
+    SERVER_TRANSACTION_CONFIGS[key] = defaultConfig;
+    saveDataStore('transaction_configs.json', SERVER_TRANSACTION_CONFIGS);
+    return defaultConfig;
+  }
+
+  function getTenantDailyTarget(tenantId: string, dateStr: string): number {
+    const key = `${tenantId || 'enterprise'}_${dateStr}`;
+    if (SERVER_TARGET_SNAPSHOTS[key]) {
+      return SERVER_TARGET_SNAPSHOTS[key].target;
+    }
+
+    const config = getTenantTransactionConfig(tenantId);
+    const min = Math.max(1, Number(config.min) || 4);
+    const max = Math.max(min, Number(config.max) || 6);
+
+    // Generate stable integer target between [min, max]
+    // Uses date string seed + tenantId to ensure deterministic fallback if needed
+    let seed = 0;
+    for (let i = 0; i < key.length; i++) {
+      seed = (seed * 31 + key.charCodeAt(i)) % 10000;
+    }
+    const range = max - min + 1;
+    const target = min + (seed % range);
+
+    const snapshot: ServerDailySnapshot = {
+      tenantId: tenantId || 'enterprise',
+      date: dateStr,
+      target,
+      createdAt: new Date().toISOString()
+    };
+
+    SERVER_TARGET_SNAPSHOTS[key] = snapshot;
+    saveDataStore('transaction_daily_snapshots.json', SERVER_TARGET_SNAPSHOTS);
+
+    recordTxAudit({
+      tenantId: tenantId || 'enterprise',
+      actorId: 'system_engine',
+      actorName: 'Target Engine',
+      action: 'TARGET_CREATED',
+      entityType: 'DAILY_TARGET',
+      entityId: key,
+      after: snapshot,
+      details: `Khởi tạo snapshot mục tiêu ngày ${dateStr}: ${target} giao dịch (Khoảng cấu hình: ${min}-${max})`
+    });
+
+    return target;
+  }
+
+  // 1. Dashboard Metrics Endpoint
+  app.get('/api/transactions/dashboard', authenticateToken, (req: any, res) => {
+    try {
+      const tenantId = req.user.tenant || 'enterprise';
+      const queryDate = req.query.date ? String(req.query.date) : new Date().toISOString().substring(0, 10);
+
+      const config = getTenantTransactionConfig(tenantId);
+      const targetNumber = getTenantDailyTarget(tenantId, queryDate);
+      const maxLimit = Math.max(targetNumber, config.maxPerDay || targetNumber);
+
+      // ONLY count SALE transactions with CONFIRMED status on that date
+      const tenantTransactions = SERVER_TRANSACTIONS.filter(
+        (t) => t.tenantId === tenantId && t.createdAt.startsWith(queryDate)
+      );
+
+      const confirmedSales = tenantTransactions.filter((t) => t.type === 'SALE' && t.status === 'CONFIRMED');
+      const actual = confirmedSales.length;
+      const revenue = confirmedSales.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+      const cancelled = tenantTransactions.filter((t) => t.status === 'CANCELLED').length;
+      const refunded = tenantTransactions.filter((t) => t.status === 'REFUNDED').length;
+
+      const remaining = Math.max(0, targetNumber - actual);
+      const progress = targetNumber > 0 ? Math.min(100, Math.round((actual / targetNumber) * 100)) : 100;
+
+      let status: 'IN_PROGRESS' | 'COMPLETED' | 'EXCEEDED' | 'DISABLED' = 'IN_PROGRESS';
+      if (!config.enabled) {
+        status = 'DISABLED';
+      } else if (actual >= maxLimit) {
+        status = 'EXCEEDED';
+      } else if (actual >= targetNumber) {
+        status = 'COMPLETED';
+      }
+
+      // Ad Opportunity Engine Signal Calculation
+      let adLevel: 'HIGH' | 'NORMAL' | 'STOP' = 'NORMAL';
+      let adReason = '';
+
+      if (!config.enabled || !config.adaptiveAdOpportunity) {
+        adLevel = 'NORMAL';
+        adReason = 'Cơ chế cơ hội quảng cáo đang tạm ngắt.';
+      } else if (actual < targetNumber) {
+        adLevel = 'HIGH';
+        adReason = `Chưa đạt mục tiêu (${actual}/${targetNumber}). Tăng ngân sách và tần suất hiển thị để hoàn thành chỉ tiêu ${remaining} giao dịch còn lại.`;
+      } else if (actual >= maxLimit) {
+        adLevel = 'STOP';
+        adReason = `Đã chạm trần tối đa ${maxLimit} giao dịch/ngày (${actual}/${maxLimit}). Tạm dừng kích hoạt quảng cáo mới để tối ưu chi phí.`;
+      } else {
+        adLevel = 'NORMAL';
+        adReason = `Đã đạt mục tiêu (${actual}/${targetNumber}). Duy trì quảng cáo chuyển đổi ổn định.`;
+      }
+
+      const recentTransactions = SERVER_TRANSACTIONS.filter((t) => t.tenantId === tenantId).slice(0, 10);
+
+      return res.json({
+        success: true,
+        date: queryDate,
+        target: {
+          min: config.min,
+          max: config.max,
+          today: targetNumber
+        },
+        actual,
+        remaining,
+        progress,
+        status,
+        adOpportunity: {
+          level: adLevel,
+          enabled: config.enabled && config.adaptiveAdOpportunity,
+          reason: adReason
+        },
+        metrics: {
+          sales: actual,
+          revenue,
+          confirmed: actual,
+          cancelled,
+          refunded
+        },
+        recentTransactions
+      });
+    } catch (e: any) {
+      console.error('[TransactionEngine] Dashboard API Error:', e);
+      return res.status(500).json({ success: false, error: 'Lỗi xử lý số liệu giao dịch Dashboard' });
+    }
+  });
+
+  // 2. Create SALE Transaction Endpoint (with strict Idempotency check)
+  app.post('/api/transactions/sale', authenticateToken, (req: any, res) => {
+    try {
+      const tenantId = req.user.tenant || 'enterprise';
+      const userId = req.user.uid || req.user.id;
+      const {
+        idempotencyKey,
+        orderId,
+        source = 'ERP',
+        amount = 0,
+        currency = 'VND',
+        status = 'CONFIRMED',
+        metadata = {}
+      } = req.body;
+
+      if (!idempotencyKey || typeof idempotencyKey !== 'string' || idempotencyKey.trim().length < 3) {
+        return res.status(400).json({
+          success: false,
+          errorType: 'MISSING_IDEMPOTENCY_KEY',
+          error: 'Mỗi giao dịch SALE bắt buộc phải có idempotencyKey duy nhất.'
+        });
+      }
+
+      const cleanKey = idempotencyKey.trim();
+
+      // Check Idempotency within the tenant
+      const existing = SERVER_TRANSACTIONS.find(
+        (t) => t.tenantId === tenantId && t.idempotencyKey === cleanKey
+      );
+
+      if (existing) {
+        // Record idempotency hit
+        recordTxAudit({
+          tenantId,
+          actorId: userId,
+          actorName: req.user.name || req.user.sub,
+          action: 'IDEMPOTENCY_DUPLICATE_HIT',
+          entityType: 'TRANSACTION',
+          entityId: existing.id,
+          after: { idempotencyKey: cleanKey, existingId: existing.id },
+          details: `Phát hiện yêu cầu trùng lặp idempotencyKey (${cleanKey}). Trả về bản ghi gốc, không tăng số đếm giao dịch.`
+        });
+
+        return res.json({
+          success: true,
+          isDuplicate: true,
+          transaction: existing,
+          message: 'Giao dịch đã được ghi nhận trước đó (Idempotency Replay).'
+        });
+      }
+
+      const numAmount = Math.max(0, Number(amount) || 0);
+      const validSources = ['ERP', 'SHOPEE', 'TIKTOK_SHOP', 'LAZADA', 'WEBSITE', 'POS', 'API', 'MANUAL'];
+      const finalSource = validSources.includes(source) ? source : 'ERP';
+      const finalStatus = status === 'PENDING' ? 'PENDING' : 'CONFIRMED';
+      const nowIso = new Date().toISOString();
+
+      const newTx: ServerTransactionRecord = {
+        id: `tx_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        tenantId,
+        userId,
+        type: 'SALE',
+        source: finalSource as any,
+        orderId: orderId ? String(orderId).trim() : undefined,
+        amount: numAmount,
+        currency: currency || 'VND',
+        status: finalStatus,
+        createdAt: nowIso,
+        confirmedAt: finalStatus === 'CONFIRMED' ? nowIso : undefined,
+        idempotencyKey: cleanKey,
+        metadata: metadata && typeof metadata === 'object' ? metadata : {}
+      };
+
+      SERVER_TRANSACTIONS.unshift(newTx);
+      saveDataStore('transactions.json', SERVER_TRANSACTIONS);
+
+      recordTxAudit({
+        tenantId,
+        actorId: userId,
+        actorName: req.user.name || req.user.sub,
+        action: finalStatus === 'CONFIRMED' ? 'TRANSACTION_CONFIRMED' : 'TRANSACTION_CREATED',
+        entityType: 'TRANSACTION',
+        entityId: newTx.id,
+        after: newTx,
+        details: `Ghi nhận giao dịch SALE mới qua kênh ${finalSource}, giá trị ${numAmount.toLocaleString('vi-VN')} đ`
+      });
+
+      return res.status(201).json({
+        success: true,
+        isDuplicate: false,
+        transaction: newTx,
+        message: 'Tạo và xác nhận giao dịch SALE thành công.'
+      });
+    } catch (e: any) {
+      console.error('[TransactionEngine] Create Sale Transaction Error:', e);
+      return res.status(500).json({ success: false, error: 'Lỗi ghi nhận giao dịch bán' });
+    }
+  });
+
+  // 3. List Transactions Endpoint
+  app.get('/api/transactions', authenticateToken, (req: any, res) => {
+    try {
+      const tenantId = req.user.tenant || 'enterprise';
+      const { date, status, source, limit = 50, offset = 0 } = req.query;
+
+      let list = SERVER_TRANSACTIONS.filter((t) => t.tenantId === tenantId);
+
+      if (date) {
+        list = list.filter((t) => t.createdAt.startsWith(String(date)));
+      }
+      if (status) {
+        list = list.filter((t) => t.status === status);
+      }
+      if (source) {
+        list = list.filter((t) => t.source === source);
+      }
+
+      const total = list.length;
+      const numLimit = Math.min(200, Math.max(1, Number(limit) || 50));
+      const numOffset = Math.max(0, Number(offset) || 0);
+      const paginated = list.slice(numOffset, numOffset + numLimit);
+
+      return res.json({
+        success: true,
+        total,
+        limit: numLimit,
+        offset: numOffset,
+        transactions: paginated
+      });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: 'Lỗi tải danh sách giao dịch' });
+    }
+  });
+
+  // 4. Cancel Transaction Endpoint
+  app.post('/api/transactions/:id/cancel', authenticateToken, (req: any, res) => {
+    try {
+      const tenantId = req.user.tenant || 'enterprise';
+      const { id } = req.params;
+      const { reason } = req.body;
+
+      const tx = SERVER_TRANSACTIONS.find((t) => t.id === id && t.tenantId === tenantId);
+      if (!tx) {
+        return res.status(404).json({ success: false, error: 'Không tìm thấy giao dịch' });
+      }
+
+      const prevStatus = tx.status;
+      tx.status = 'CANCELLED';
+      saveDataStore('transactions.json', SERVER_TRANSACTIONS);
+
+      recordTxAudit({
+        tenantId,
+        actorId: req.user.uid || req.user.id,
+        actorName: req.user.name || req.user.sub,
+        action: 'TRANSACTION_CANCELLED',
+        entityType: 'TRANSACTION',
+        entityId: tx.id,
+        before: { status: prevStatus },
+        after: { status: 'CANCELLED', reason },
+        details: `Hủy giao dịch ${tx.id}. Lý do: ${reason || 'Không ghi chú'}`
+      });
+
+      return res.json({ success: true, message: 'Đã hủy giao dịch thành công.', transaction: tx });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: 'Lỗi khi hủy giao dịch' });
+    }
+  });
+
+  // 5. Refund Transaction Endpoint
+  app.post('/api/transactions/:id/refund', authenticateToken, (req: any, res) => {
+    try {
+      const tenantId = req.user.tenant || 'enterprise';
+      const { id } = req.params;
+      const { reason } = req.body;
+
+      const tx = SERVER_TRANSACTIONS.find((t) => t.id === id && t.tenantId === tenantId);
+      if (!tx) {
+        return res.status(404).json({ success: false, error: 'Không tìm thấy giao dịch' });
+      }
+
+      const prevStatus = tx.status;
+      tx.status = 'REFUNDED';
+      saveDataStore('transactions.json', SERVER_TRANSACTIONS);
+
+      recordTxAudit({
+        tenantId,
+        actorId: req.user.uid || req.user.id,
+        actorName: req.user.name || req.user.sub,
+        action: 'TRANSACTION_REFUNDED',
+        entityType: 'TRANSACTION',
+        entityId: tx.id,
+        before: { status: prevStatus },
+        after: { status: 'REFUNDED', reason },
+        details: `Hoàn tiền giao dịch ${tx.id}. Lý do: ${reason || 'Không ghi chú'}`
+      });
+
+      return res.json({ success: true, message: 'Đã hoàn tiền giao dịch thành công.', transaction: tx });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: 'Lỗi khi hoàn tiền giao dịch' });
+    }
+  });
+
+  // 6. Get Daily Target Config
+  app.get('/api/transactions/config', authenticateToken, (req: any, res) => {
+    try {
+      const tenantId = req.user.tenant || 'enterprise';
+      const config = getTenantTransactionConfig(tenantId);
+      return res.json({ success: true, config });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: 'Lỗi lấy cấu hình mục tiêu giao dịch' });
+    }
+  });
+
+  // 7. Save Daily Target Config (Admin / Super Admin)
+  app.post('/api/transactions/config', authenticateToken, (req: any, res) => {
+    try {
+      if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
+        return res.status(403).json({
+          success: false,
+          errorType: 'FORBIDDEN',
+          error: 'Chỉ Quản trị viên (Admin/Super Admin) mới có quyền thay đổi cấu hình mục tiêu giao dịch.'
+        });
+      }
+
+      const tenantId = req.user.tenant || 'enterprise';
+      const { enabled = true, min = 4, max = 6, maxPerDay = 6, adaptiveAdOpportunity = true } = req.body;
+
+      const numMin = Number(min);
+      const numMax = Number(max);
+      const numMaxPerDay = Number(maxPerDay);
+
+      if (isNaN(numMin) || isNaN(numMax) || numMin < 0 || numMax < numMin) {
+        return res.status(400).json({
+          success: false,
+          errorType: 'INVALID_CONFIG_VALUES',
+          error: 'Giá trị cấu hình không hợp lệ. Yêu cầu: min >= 0 và max >= min.'
+        });
+      }
+
+      if (!isNaN(numMaxPerDay) && numMaxPerDay < numMax) {
+        return res.status(400).json({
+          success: false,
+          errorType: 'INVALID_MAX_PER_DAY',
+          error: 'Giới hạn trần tối đa trong ngày (maxPerDay) phải lớn hơn hoặc bằng max target.'
+        });
+      }
+
+      const oldConfig = getTenantTransactionConfig(tenantId);
+      const updatedConfig: ServerDailyConfig = {
+        enabled: Boolean(enabled),
+        min: Math.floor(numMin),
+        max: Math.floor(numMax),
+        maxPerDay: isNaN(numMaxPerDay) ? Math.floor(numMax) : Math.floor(numMaxPerDay),
+        adaptiveAdOpportunity: Boolean(adaptiveAdOpportunity),
+        updatedAt: new Date().toISOString(),
+        updatedBy: req.user.name || req.user.sub || 'Admin'
+      };
+
+      SERVER_TRANSACTION_CONFIGS[tenantId] = updatedConfig;
+      saveDataStore('transaction_configs.json', SERVER_TRANSACTION_CONFIGS);
+
+      recordTxAudit({
+        tenantId,
+        actorId: req.user.uid || req.user.id,
+        actorName: req.user.name || req.user.sub,
+        action: 'CONFIG_UPDATED',
+        entityType: 'CONFIG',
+        entityId: tenantId,
+        before: oldConfig,
+        after: updatedConfig,
+        details: `Cập nhật cấu hình mục tiêu ngày: Target [${updatedConfig.min} - ${updatedConfig.max}], Max/Ngày: ${updatedConfig.maxPerDay}, Adaptive: ${updatedConfig.adaptiveAdOpportunity}`
+      });
+
+      return res.json({
+        success: true,
+        message: 'Lưu cấu hình mục tiêu giao dịch thành công!',
+        config: updatedConfig
+      });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: 'Lỗi lưu cấu hình mục tiêu' });
+    }
+  });
+
+  // 8. Transaction Audit Logs Endpoint
+  app.get('/api/transactions/audit', authenticateToken, (req: any, res) => {
+    try {
+      const tenantId = req.user.tenant || 'enterprise';
+      const logs = SERVER_TX_AUDIT_LOGS.filter(
+        (l) => l.tenantId === tenantId || req.user.role === 'super_admin'
+      ).slice(0, 100);
+
+      return res.json({ success: true, logs });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: 'Lỗi lấy nhật ký kiểm toán giao dịch' });
+    }
+  });
+
+  // 9. Seed Demo Transactions (Optional for testing)
+  app.post('/api/transactions/seed-demo', authenticateToken, (req: any, res) => {
+    try {
+      const tenantId = req.user.tenant || 'enterprise';
+      const userId = req.user.uid || req.user.id;
+      const todayStr = new Date().toISOString().substring(0, 10);
+
+      const existingToday = SERVER_TRANSACTIONS.filter(
+        (t) => t.tenantId === tenantId && t.createdAt.startsWith(todayStr)
+      );
+
+      if (existingToday.length >= 3) {
+        return res.json({
+          success: true,
+          count: existingToday.length,
+          message: 'Đã có sẵn dữ liệu giao dịch trong ngày.'
+        });
+      }
+
+      const sampleSources: ('SHOPEE' | 'TIKTOK_SHOP' | 'POS' | 'WEBSITE')[] = ['SHOPEE', 'POS', 'TIKTOK_SHOP'];
+      const sampleAmounts = [1850000, 3200000, 950000];
+
+      sampleSources.forEach((src, idx) => {
+        const idKey = `DEMO_SEED_${todayStr}_${src}_${idx}`;
+        if (!SERVER_TRANSACTIONS.some((t) => t.tenantId === tenantId && t.idempotencyKey === idKey)) {
+          const nowIso = new Date().toISOString();
+          SERVER_TRANSACTIONS.unshift({
+            id: `tx_demo_${Date.now()}_${idx}`,
+            tenantId,
+            userId,
+            type: 'SALE',
+            source: src,
+            orderId: `ORD-${src.substring(0, 3)}-${1000 + idx}`,
+            amount: sampleAmounts[idx],
+            currency: 'VND',
+            status: 'CONFIRMED',
+            createdAt: nowIso,
+            confirmedAt: nowIso,
+            idempotencyKey: idKey,
+            metadata: { note: 'Dữ liệu mẫu kiểm thử Transaction Engine' }
+          });
+        }
+      });
+
+      saveDataStore('transactions.json', SERVER_TRANSACTIONS);
+      return res.json({ success: true, count: 3, message: 'Đã nạp 3 giao dịch mẫu ban đầu.' });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: 'Lỗi nạp dữ liệu mẫu' });
+    }
+  });
+
+  // =========================================================================
+  // USER CORE BACKEND ROUTER (PHASE 2.1 — MULTI-TENANT, RBAC, DATA SCOPE)
+  // =========================================================================
+  app.use('/api/core', createCoreApiRouter(authenticateToken));
 
   // Vite middleware setup
   if (process.env.NODE_ENV !== 'production') {

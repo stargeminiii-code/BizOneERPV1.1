@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest';
 import {
   mapDescriptionToSku,
   validateExtractedInvoice,
@@ -7,6 +8,14 @@ import {
   DEFAULT_COMPANY_TAX_CODE
 } from './invoiceExtractionService';
 import { Product, InventoryLayer, ExtractedInvoiceSchema, MappedInvoiceItem } from '../types';
+
+describe('e-Invoice Extraction Unit Tests', () => {
+  it('runs all invoice extraction and accounting unit tests successfully', () => {
+    const out = runInvoiceExtractionUnitTests();
+    expect(out.failed).toBe(0);
+    expect(out.passed).toBe(out.total);
+  });
+});
 
 /**
  * Unit Test Suite for e-Invoice Extraction, SKU Mapping, Validation & Accounting

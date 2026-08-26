@@ -34,7 +34,11 @@ import {
   Globe,
   Briefcase,
   TrendingUp,
-  Tag
+  Tag,
+  RotateCcw,
+  ShieldAlert,
+  ArrowLeft,
+  Sparkles
 } from 'lucide-react';
 import { ViewMode, UserAccount } from '../types';
 import { APP_NAME } from '../constants/appConfig';
@@ -61,30 +65,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { language, t } = useLanguage();
 
-  // Collapsible state for individual menu groups
+  // Collapsible state for individual menu groups in User App
   const [collapsedGroups, setCollapsedGroups] = useState<{
-    business: boolean;
-    warehouse: boolean;
-    products: boolean;
-    finance: boolean;
-    marketing: boolean;
+    sales: boolean;
     crm: boolean;
-    purchasing: boolean;
-    fnb: boolean;
+    finance: boolean;
+    ccu: boolean;
+    marketing: boolean;
   }>(() => {
     try {
-      const saved = localStorage.getItem('bizone_sidebar_groups');
+      const saved = localStorage.getItem('bizone_sidebar_groups_v3');
       if (saved) return JSON.parse(saved);
     } catch {}
     return {
-      business: false,
-      warehouse: false,
-      products: false,
+      sales: false,
+      crm: true,
       finance: false,
-      marketing: false,
-      crm: false,
-      purchasing: false,
-      fnb: false
+      ccu: false,
+      marketing: true
     };
   });
 
@@ -99,7 +97,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   useEffect(() => {
     try {
-      localStorage.setItem('bizone_sidebar_groups', JSON.stringify(collapsedGroups));
+      localStorage.setItem('bizone_sidebar_groups_v3', JSON.stringify(collapsedGroups));
     } catch {}
   }, [collapsedGroups]);
 
@@ -122,6 +120,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
       onClose();
     }
   };
+
+  const isOwnerView = currentView === 'saas-platform-admin';
+  const isSalesActive = [
+    'orders',
+    'pos'
+  ].includes(currentView);
+
+  const isFinanceActive = [
+    'finance',
+    'cashflow',
+    'pnl',
+    'banking',
+    'sales-channels',
+    'sales-reconciliation',
+    'sales-reports'
+  ].includes(currentView);
+
+  const isCcuActive = [
+    'ccu',
+    'inventory',
+    'variant-definitions',
+    'warehouse-dashboard',
+    'warehouse-issues',
+    'warehouse-transfers',
+    'warehouse-stocktakes',
+    'warehouse-fifo-lots',
+    'warehouse-reports',
+    'stockcards',
+    'purchasing',
+    'suppliers',
+    'beverages',
+    'sales-returns'
+  ].includes(currentView);
 
   return (
     <>
@@ -146,11 +177,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-3.5 sm:p-4 border-b border-slate-100 flex items-center justify-between">
           <div
             className={`flex items-center gap-3 cursor-pointer text-left ${isCompact ? 'md:justify-center md:w-full' : ''}`}
-            onClick={() => handleNavClick('dashboard')}
+            onClick={() => handleNavClick(isOwnerView ? 'saas-platform-admin' : 'dashboard')}
             title={APP_NAME}
           >
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-blue-700 via-indigo-600 to-blue-500 text-white flex items-center justify-center font-black text-lg sm:text-xl shadow-md shadow-blue-500/20 tracking-tighter shrink-0 hover:opacity-95 transition-opacity">
-              B
+            <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl text-white flex items-center justify-center font-black text-lg sm:text-xl shadow-md tracking-tighter shrink-0 hover:opacity-95 transition-opacity ${
+              isOwnerView
+                ? 'bg-gradient-to-tr from-purple-700 via-indigo-700 to-purple-600 shadow-purple-500/20'
+                : 'bg-gradient-to-tr from-blue-700 via-indigo-600 to-blue-500 shadow-blue-500/20'
+            }`}>
+              {isOwnerView ? '🛡️' : 'B'}
             </div>
             {!isCompact && (
               <div className="overflow-hidden text-left">
@@ -158,12 +193,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span className="font-black text-base sm:text-lg tracking-tight text-slate-900 leading-tight">
                     {APP_NAME}
                   </span>
-                  <span className="text-[9px] font-extrabold uppercase bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded font-mono">
-                    ERP
+                  <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded font-mono ${
+                    isOwnerView ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                  }`}>
+                    {isOwnerView ? 'OWNER' : 'ERP'}
                   </span>
                 </div>
                 <div className="text-[10px] font-bold tracking-wider text-slate-400 uppercase leading-none mt-0.5 truncate">
-                  Enterprise System
+                  {isOwnerView ? 'Platform Control Center' : 'V1.1 Enterprise'}
                 </div>
               </div>
             )}
@@ -192,529 +229,419 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        {/* Navigation Items (All strictly Left-Aligned) */}
-        <div className="flex-1 overflow-y-auto px-2.5 sm:px-3 py-2 space-y-1.5 custom-scrollbar text-left">
-          {/* 1. DASHBOARD */}
-          <button
-            id="nav-dashboard"
-            onClick={() => handleNavClick('dashboard')}
-            title="Dashboard"
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-xs transition-all text-left ${
-              isCompact ? 'md:justify-center md:px-0' : ''
-            } ${
-              currentView === 'dashboard'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-            }`}
-          >
-            <LayoutDashboard className="w-4 h-4 shrink-0" />
-            {!isCompact && <span>{t('nav.dashboard', 'Dashboard')}</span>}
-          </button>
+        {/* OWNER APP NAVIGATION MODE */}
+        {isOwnerView ? (
+          <div className="flex-1 overflow-y-auto px-2.5 sm:px-3 py-3 space-y-2 custom-scrollbar text-left">
+            <div className="px-2 py-1 bg-purple-50 border border-purple-200 rounded-xl text-purple-900 text-xs font-bold flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <ShieldAlert className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                {!isCompact && <span>Owner App</span>}
+              </span>
+              {!isCompact && <span className="text-[10px] bg-purple-200 text-purple-800 px-1.5 py-0.5 rounded font-mono">ROOT</span>}
+            </div>
 
-          {/* 2. KINH DOANH */}
-          <div>
-            {!isCompact && (
+            <button
+              id="btn-switch-to-user-app"
+              onClick={() => handleNavClick('dashboard')}
+              className="w-full flex items-center gap-2.5 px-3 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition cursor-pointer shadow-xs"
+            >
+              <ArrowLeft className="w-4 h-4 text-slate-300" />
+              {!isCompact && <span>Quay lại Doanh nghiệp</span>}
+            </button>
+
+            <div className="pt-2">
               <button
-                onClick={() => toggleGroup('business')}
-                className="w-full px-3 py-1 flex items-center justify-between text-[11px] font-bold text-slate-500 hover:text-slate-800 transition-colors text-left"
+                onClick={() => handleNavClick('saas-platform-admin')}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-xs bg-purple-600 text-white shadow-xs text-left"
               >
-                <span className="flex items-center gap-2">
-                  <Briefcase className="w-3.5 h-3.5 text-blue-600" />
-                  <span>{t('nav.business', 'Kinh doanh')}</span>
-                </span>
-                <span className="text-slate-400">
-                  {collapsedGroups.business ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                </span>
+                <LayoutDashboard className="w-4 h-4 shrink-0" />
+                {!isCompact && <span>Quản trị nền tảng SaaS</span>}
               </button>
-            )}
+            </div>
+          </div>
+        ) : (
+          /* USER APP NAVIGATION (6 LEVEL 1 MODULES) */
+          <div className="flex-1 overflow-y-auto px-2.5 sm:px-3 py-2 space-y-1.5 custom-scrollbar text-left">
+            {/* 1. DASHBOARD */}
+            <button
+              id="nav-dashboard"
+              onClick={() => handleNavClick('dashboard')}
+              title="Dashboard"
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-xs transition-all text-left ${
+                isCompact ? 'md:justify-center md:px-0' : ''
+              } ${
+                currentView === 'dashboard'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+              }`}
+            >
+              <LayoutDashboard className="w-4 h-4 shrink-0" />
+              {!isCompact && <span>{t('nav.dashboard', 'Dashboard')}</span>}
+            </button>
 
-            {(!collapsedGroups.business || isCompact) && (
-              <div className={`space-y-0.5 ${!isCompact ? 'pl-4' : ''}`}>
+            {/* 2. BÁN HÀNG (Unified Sales Workspace) */}
+            <div>
+              <button
+                id="nav-orders-main"
+                onClick={() => handleNavClick('orders')}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-xs transition-all text-left ${
+                  isCompact ? 'md:justify-center md:px-0' : ''
+                } ${
+                  isSalesActive
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+                title="Bán hàng"
+              >
+                <Briefcase className="w-4 h-4 shrink-0" />
+                {!isCompact && <span>Bán hàng</span>}
+              </button>
+            </div>
+
+            {/* 3. CRM & KHÁCH HÀNG */}
+            <div>
+              <button
+                id="nav-crm"
+                onClick={() => handleNavClick('crm')}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-xs transition-all text-left ${
+                  isCompact ? 'md:justify-center md:px-0' : ''
+                } ${
+                  currentView === 'crm'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+                title="CRM & Khách hàng"
+              >
+                <Users className="w-4 h-4 shrink-0" />
+                {!isCompact && <span>CRM & Khách hàng</span>}
+              </button>
+            </div>
+
+            {/* 4. TÀI CHÍNH & KẾ TOÁN */}
+            <div>
+              {!isCompact ? (
+                <div className="flex items-center justify-between rounded-xl hover:bg-slate-50 transition-colors">
+                  <button
+                    id="nav-finance-main"
+                    onClick={() => handleNavClick('finance')}
+                    className={`flex-1 flex items-center gap-3 px-3 py-2 font-bold text-xs transition-all text-left ${
+                      isFinanceActive
+                        ? 'text-blue-700'
+                        : 'text-slate-700 hover:text-slate-900'
+                    }`}
+                  >
+                    <BookOpen className="w-4 h-4 shrink-0" />
+                    <span>Tài chính & Kế toán</span>
+                  </button>
+                  <button
+                    onClick={() => toggleGroup('finance')}
+                    className="p-2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    title="Mở rộng / Thu gọn"
+                  >
+                    {collapsedGroups.finance ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              ) : (
                 <button
-                  id="nav-pos"
-                  onClick={() => handleNavClick('pos')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl font-medium text-xs transition-all text-left ${
-                    isCompact ? 'md:justify-center md:px-0' : ''
-                  } ${
-                    currentView === 'pos'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  onClick={() => handleNavClick('finance')}
+                  className={`w-full flex items-center justify-center p-2 rounded-xl text-xs font-bold ${
+                    isFinanceActive ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-100'
                   }`}
+                  title="Tài chính & Kế toán"
                 >
-                  <Calculator className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                  {!isCompact && (
-                    <div className="flex items-center justify-between w-full">
-                      <span>{t('nav.pos', 'POS')}</span>
-                      <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded">
-                        FIFO
+                  <BookOpen className="w-4 h-4" />
+                </button>
+              )}
+
+              {(!collapsedGroups.finance && !isCompact) && (
+                <div className="pl-4 space-y-0.5 mt-0.5 border-l border-slate-100 ml-3.5">
+                  <button
+                    id="nav-sub-cashflow"
+                    onClick={() => handleNavClick('cashflow')}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition text-left ${
+                      currentView === 'cashflow'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <ArrowRightLeft className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                    <span>Thu & Chi</span>
+                  </button>
+
+                  <button
+                    id="nav-sub-pnl"
+                    onClick={() => handleNavClick('pnl')}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition text-left ${
+                      currentView === 'pnl'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <TrendingUp className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                    <span>Lãi & Lỗ (P&L)</span>
+                  </button>
+
+                  <button
+                    id="nav-sub-banking"
+                    onClick={() => handleNavClick('banking')}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition text-left ${
+                      currentView === 'banking'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <QrCode className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                    <span>Ngân hàng & VietQR</span>
+                  </button>
+
+                  <button
+                    id="nav-sub-channels"
+                    onClick={() => handleNavClick('sales-channels')}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition text-left ${
+                      currentView === 'sales-channels'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <Globe className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                    <span>Doanh thu & Kênh bán</span>
+                  </button>
+
+                  <button
+                    id="nav-sub-reconciliation"
+                    onClick={() => handleNavClick('sales-reconciliation')}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition text-left ${
+                      currentView === 'sales-reconciliation'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                    <span>Đối soát</span>
+                  </button>
+
+                  <button
+                    id="nav-sub-reports"
+                    onClick={() => handleNavClick('sales-reports')}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition text-left ${
+                      currentView === 'sales-reports'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <BarChart3 className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                    <span>Báo cáo tài chính</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 5. CCU (VẬN HÀNH LÕI & CHUỖI CUNG ỨNG) */}
+            <div>
+              {!isCompact ? (
+                <div className="flex items-center justify-between rounded-xl hover:bg-slate-50 transition-colors">
+                  <button
+                    id="nav-ccu-main"
+                    onClick={() => handleNavClick('ccu')}
+                    className={`flex-1 flex items-center gap-3 px-3 py-2 font-bold text-xs transition-all text-left ${
+                      isCcuActive
+                        ? 'text-blue-700'
+                        : 'text-slate-700 hover:text-slate-900'
+                    }`}
+                  >
+                    <Boxes className="w-4 h-4 shrink-0" />
+                    <span>CCU (Vận hành)</span>
+                  </button>
+                  <button
+                    onClick={() => toggleGroup('ccu')}
+                    className="p-2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    title="Mở rộng / Thu gọn"
+                  >
+                    {collapsedGroups.ccu ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => handleNavClick('ccu')}
+                  className={`w-full flex items-center justify-center p-2 rounded-xl text-xs font-bold ${
+                    isCcuActive ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-100'
+                  }`}
+                  title="CCU Vận hành"
+                >
+                  <Boxes className="w-4 h-4" />
+                </button>
+              )}
+
+              {(!collapsedGroups.ccu && !isCompact) && (
+                <div className="pl-4 space-y-0.5 mt-0.5 border-l border-slate-100 ml-3.5">
+                  <button
+                    id="nav-sub-products"
+                    onClick={() => handleNavClick('variant-definitions')}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition text-left ${
+                      currentView === 'variant-definitions'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <Layers3 className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                    <span>Sản phẩm & SKU</span>
+                  </button>
+
+                  <button
+                    id="nav-sub-inventory"
+                    onClick={() => handleNavClick('inventory')}
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition text-left ${
+                      currentView === 'inventory'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Package className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                      <span>Kho & Tồn kho</span>
+                    </span>
+                    {lowStockCount > 0 && (
+                      <span className="text-[9px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.2 rounded-full">
+                        {lowStockCount}
                       </span>
-                    </div>
-                  )}
-                </button>
+                    )}
+                  </button>
 
-                <button
-                  id="nav-orders"
-                  onClick={() => handleNavClick('orders')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl font-medium text-xs transition-all text-left ${
-                    isCompact ? 'md:justify-center md:px-0' : ''
-                  } ${
-                    currentView === 'orders'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <FileText className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                  {!isCompact && <span>{t('nav.orders', 'Đơn hàng')}</span>}
-                </button>
-              </div>
-            )}
-          </div>
+                  <button
+                    id="nav-sub-warehouse"
+                    onClick={() => handleNavClick('warehouse-dashboard')}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition text-left ${
+                      currentView === 'warehouse-dashboard'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <WarehouseIcon className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                    <span>Điều phối kho</span>
+                  </button>
 
-          {/* 3. Marketing */}
-          <div>
-            <button
-              id="nav-marketing"
-              onClick={() => handleNavClick('marketing')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-xs transition-all text-left ${
-                isCompact ? 'md:justify-center md:px-0' : ''
-              } ${
-                currentView === 'marketing'
-                  ? 'bg-purple-700 text-white shadow-xs'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-              }`}
-            >
-              <Megaphone className="w-4 h-4 shrink-0 text-purple-500" />
-              {!isCompact && (
-                <div className="flex items-center justify-between w-full">
-                  <span>{t('nav.marketing', 'Marketing')}</span>
-                  <span className="text-[9px] bg-purple-100 text-purple-800 font-bold px-1.5 py-0.2 rounded">
-                    ROAS
-                  </span>
+                  <button
+                    id="nav-sub-purchasing"
+                    onClick={() => handleNavClick('purchasing')}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition text-left ${
+                      currentView === 'purchasing'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <Truck className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                    <span>Mua hàng & PO</span>
+                  </button>
+
+                  <button
+                    id="nav-sub-suppliers"
+                    onClick={() => handleNavClick('suppliers')}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition text-left ${
+                      currentView === 'suppliers'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <Building2 className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                    <span>Nhà cung cấp</span>
+                  </button>
+
+                  <button
+                    id="nav-sub-recipes"
+                    onClick={() => handleNavClick('beverages')}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition text-left ${
+                      currentView === 'beverages'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <Coffee className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                    <span>Công thức & BOM</span>
+                  </button>
+
+                  <button
+                    id="nav-sub-returns"
+                    onClick={() => handleNavClick('sales-returns')}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition text-left ${
+                      currentView === 'sales-returns'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                    <span>Trả hàng & Nhập lại</span>
+                  </button>
+
+                  <button
+                    id="nav-sub-fifo-lots"
+                    onClick={() => handleNavClick('warehouse-fifo-lots')}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition text-left ${
+                      currentView === 'warehouse-fifo-lots'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                    <span>Lô FIFO & HSD</span>
+                  </button>
+
+                  <button
+                    id="nav-sub-stockcards"
+                    onClick={() => handleNavClick('stockcards')}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition text-left ${
+                      currentView === 'stockcards'
+                        ? 'bg-blue-50 text-blue-700 font-bold'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`}
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                    <span>Thẻ kho</span>
+                  </button>
                 </div>
               )}
-            </button>
-          </div>
+            </div>
 
-          {/* 4. CRM */}
-          <div>
-            <button
-              id="nav-crm"
-              onClick={() => handleNavClick('crm')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-xs transition-all text-left ${
-                isCompact ? 'md:justify-center md:px-0' : ''
-              } ${
-                currentView === 'crm'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-              }`}
-            >
-              <Users className="w-4 h-4 shrink-0" />
-              {!isCompact && <span>{t('nav.crm', 'CRM')}</span>}
-            </button>
-          </div>
-
-          {/* 5. MUA HÀNG */}
-          <div>
-            <button
-              id="nav-suppliers"
-              onClick={() => handleNavClick('suppliers')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-xs transition-all text-left ${
-                isCompact ? 'md:justify-center md:px-0' : ''
-              } ${
-                currentView === 'suppliers'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-              }`}
-            >
-              <Building2 className="w-4 h-4 shrink-0" />
-              {!isCompact && (
-                <div className="flex items-center justify-between w-full">
-                  <span>{t('nav.purchasing', 'Mua hàng')}</span>
-                  <span className="text-[9px] bg-blue-100 text-blue-700 font-bold px-1.5 py-0.2 rounded">
-                    NCC
-                  </span>
-                </div>
-              )}
-            </button>
-          </div>
-
-          {/* 6. KHO & FIFO */}
-          <div>
-            {!isCompact && (
+            {/* 6. MARKETING */}
+            <div>
               <button
-                onClick={() => toggleGroup('warehouse')}
-                className="w-full px-3 py-1 flex items-center justify-between text-[11px] font-bold text-slate-500 hover:text-slate-800 transition-colors text-left"
+                id="nav-marketing"
+                onClick={() => handleNavClick('marketing')}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-xs transition-all text-left ${
+                  isCompact ? 'md:justify-center md:px-0' : ''
+                } ${
+                  currentView === 'marketing'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+                title="Marketing"
               >
-                <span className="flex items-center gap-2">
-                  <WarehouseIcon className="w-3.5 h-3.5 text-blue-600" />
-                  <span>{t('nav.inventory', 'Kho & FIFO')}</span>
-                </span>
-                <span className="text-slate-400">
-                  {collapsedGroups.warehouse ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                </span>
+                <Megaphone className="w-4 h-4 shrink-0" />
+                {!isCompact && <span>Marketing</span>}
               </button>
-            )}
+            </div>
 
-            {(!collapsedGroups.warehouse || isCompact) && (
-              <div className={`space-y-0.5 ${!isCompact ? 'pl-4' : ''}`}>
-                <button
-                  id="nav-warehouse-dashboard"
-                  onClick={() => handleNavClick('warehouse-dashboard')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl font-medium text-xs transition-all text-left ${
-                    isCompact ? 'md:justify-center md:px-0' : ''
-                  } ${
-                    currentView === 'warehouse-dashboard'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <Boxes className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                  {!isCompact && <span>{t('nav.warehouseDashboard', 'Tổng quan Kho')}</span>}
-                </button>
-
-                <button
-                  id="nav-purchasing"
-                  onClick={() => handleNavClick('purchasing')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl font-medium text-xs transition-all text-left ${
-                    isCompact ? 'md:justify-center md:px-0' : ''
-                  } ${
-                    currentView === 'purchasing'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <Truck className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                  {!isCompact && <span>{language === 'vi' ? 'Nhập kho (PO)' : 'Goods Receipt (PO)'}</span>}
-                </button>
-
-                <button
-                  id="nav-warehouse-issues"
-                  onClick={() => handleNavClick('warehouse-issues')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl font-medium text-xs transition-all text-left ${
-                    isCompact ? 'md:justify-center md:px-0' : ''
-                  } ${
-                    currentView === 'warehouse-issues'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <ArrowUpRight className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                  {!isCompact && <span>{t('nav.warehouseIssues', 'Xuất kho')}</span>}
-                </button>
-
-                <button
-                  id="nav-warehouse-transfers"
-                  onClick={() => handleNavClick('warehouse-transfers')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl font-medium text-xs transition-all text-left ${
-                    isCompact ? 'md:justify-center md:px-0' : ''
-                  } ${
-                    currentView === 'warehouse-transfers'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <ArrowRightLeft className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                  {!isCompact && <span>{t('nav.warehouseTransfers', 'Chuyển kho')}</span>}
-                </button>
-
-                <button
-                  id="nav-warehouse-stocktakes"
-                  onClick={() => handleNavClick('warehouse-stocktakes')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl font-medium text-xs transition-all text-left ${
-                    isCompact ? 'md:justify-center md:px-0' : ''
-                  } ${
-                    currentView === 'warehouse-stocktakes'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <ClipboardCheck className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                  {!isCompact && <span>{t('nav.warehouseStocktakes', 'Kiểm kê')}</span>}
-                </button>
-
-                <button
-                  id="nav-warehouse-fifo-lots"
-                  onClick={() => handleNavClick('warehouse-fifo-lots')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl font-medium text-xs transition-all text-left ${
-                    isCompact ? 'md:justify-center md:px-0' : ''
-                  } ${
-                    currentView === 'warehouse-fifo-lots'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <Layers className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                  {!isCompact && <span>{t('nav.warehouseFifoLots', 'Lô & FIFO')}</span>}
-                </button>
-
-                <button
-                  id="nav-stockcards"
-                  onClick={() => handleNavClick('stockcards')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl font-medium text-xs transition-all text-left ${
-                    isCompact ? 'md:justify-center md:px-0' : ''
-                  } ${
-                    currentView === 'stockcards'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <ScrollText className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                  {!isCompact && <span>{t('nav.stockcards', 'Thẻ kho')}</span>}
-                </button>
-
-                <button
-                  id="nav-warehouse-reports"
-                  onClick={() => handleNavClick('warehouse-reports')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl font-medium text-xs transition-all text-left ${
-                    isCompact ? 'md:justify-center md:px-0' : ''
-                  } ${
-                    currentView === 'warehouse-reports'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                  {!isCompact && <span>{t('nav.warehouseReports', 'Báo cáo kho')}</span>}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* 7. SẢN PHẨM */}
-          <div>
-            {!isCompact && (
+            {/* BIZONE AI ASSISTANT */}
+            <div className="pt-1.5">
               <button
-                onClick={() => toggleGroup('products')}
-                className="w-full px-3 py-1 flex items-center justify-between text-[11px] font-bold text-slate-500 hover:text-slate-800 transition-colors text-left"
+                id="nav-ai-assistant"
+                onClick={() => handleNavClick('ai-assistant')}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-bold text-xs transition-all text-left ${
+                  isCompact ? 'md:justify-center md:px-0' : ''
+                } ${
+                  currentView === 'ai-assistant'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                }`}
+                title="BizOne AI Assistant"
               >
-                <span className="flex items-center gap-2">
-                  <Package className="w-3.5 h-3.5 text-blue-600" />
-                  <span>{t('nav.products', 'Sản phẩm')}</span>
-                </span>
-                <span className="text-slate-400">
-                  {collapsedGroups.products ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                </span>
-              </button>
-            )}
-
-            {(!collapsedGroups.products || isCompact) && (
-              <div className={`space-y-0.5 ${!isCompact ? 'pl-4' : ''}`}>
-                <button
-                  id="nav-inventory"
-                  onClick={() => handleNavClick('inventory')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl font-medium text-xs transition-all text-left ${
-                    isCompact ? 'md:justify-center md:px-0' : ''
-                  } ${
-                    currentView === 'inventory'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <Package className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                  {!isCompact && (
-                    <div className="flex items-center justify-between w-full">
-                      <span>{t('nav.productsSub', 'Danh mục SP & Tồn kho')}</span>
-                      {lowStockCount > 0 && (
-                        <span className="text-[9px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.2 rounded-full">
-                          {lowStockCount}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </button>
-
-                <button
-                  id="nav-variant-definitions"
-                  onClick={() => handleNavClick('variant-definitions')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl font-medium text-xs transition-all text-left ${
-                    isCompact ? 'md:justify-center md:px-0' : ''
-                  } ${
-                    currentView === 'variant-definitions'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <Layers3 className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                  {!isCompact && (
-                    <div className="flex items-center justify-between w-full">
-                      <span>{t('nav.variantDefinitions', 'Variant SKU')}</span>
-                      <span className="text-[9px] bg-purple-100 text-purple-700 font-bold px-1.5 py-0.2 rounded">
-                        Master
-                      </span>
-                    </div>
-                  )}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* 8. F&B */}
-          <div>
-            <button
-              id="nav-beverages"
-              onClick={() => handleNavClick('beverages')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-xs transition-all text-left ${
-                isCompact ? 'md:justify-center md:px-0' : ''
-              } ${
-                currentView === 'beverages'
-                  ? 'bg-amber-800 text-white shadow-xs'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-              }`}
-            >
-              <Coffee className="w-4 h-4 shrink-0 text-amber-500" />
-              {!isCompact && (
-                <div className="flex items-center justify-between w-full">
-                  <span>{t('nav.beveragesSub', 'F&B & Recipe')}</span>
-                  <span className="text-[9px] bg-amber-100 text-amber-900 font-bold px-1.5 py-0.2 rounded">
-                    BOM
-                  </span>
+                <div className="flex items-center gap-3">
+                  <Bot className="w-4 h-4 text-emerald-600 shrink-0" />
+                  {!isCompact && <span>BizOne AI</span>}
                 </div>
-              )}
-            </button>
-          </div>
-
-          {/* 9. TC-KT */}
-          <div>
-            {!isCompact && (
-              <button
-                onClick={() => toggleGroup('finance')}
-                className="w-full px-3 py-1 flex items-center justify-between text-[11px] font-bold text-slate-500 hover:text-slate-800 transition-colors text-left"
-              >
-                <span className="flex items-center gap-2">
-                  <BookOpen className="w-3.5 h-3.5 text-blue-600" />
-                  <span>{t('nav.finance', 'TC-KT')}</span>
-                </span>
-                <span className="text-slate-400">
-                  {collapsedGroups.finance ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                </span>
               </button>
-            )}
-
-            {(!collapsedGroups.finance || isCompact) && (
-              <div className={`space-y-0.5 ${!isCompact ? 'pl-4' : ''}`}>
-                <button
-                  id="nav-cashflow"
-                  onClick={() => handleNavClick('cashflow')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl font-medium text-xs transition-all text-left ${
-                    isCompact ? 'md:justify-center md:px-0' : ''
-                  } ${
-                    currentView === 'cashflow'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <BookOpen className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                  {!isCompact && <span>{t('nav.cashflow', 'Quỹ & Dòng tiền')}</span>}
-                </button>
-
-                <button
-                  id="nav-banking"
-                  onClick={() => handleNavClick('banking')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl font-medium text-xs transition-all text-left ${
-                    isCompact ? 'md:justify-center md:px-0' : ''
-                  } ${
-                    currentView === 'banking'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <QrCode className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                  {!isCompact && (
-                    <div className="flex items-center justify-between w-full">
-                      <span>{t('nav.banking', 'Ngân hàng & VietQR')}</span>
-                      <span className="text-[9px] bg-blue-100 text-blue-700 font-bold px-1.5 py-0.2 rounded">
-                        24/7
-                      </span>
-                    </div>
-                  )}
-                </button>
-
-                <button
-                  id="nav-pnl"
-                  onClick={() => handleNavClick('pnl')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl font-medium text-xs transition-all text-left ${
-                    isCompact ? 'md:justify-center md:px-0' : ''
-                  } ${
-                    currentView === 'pnl'
-                      ? 'bg-blue-50 text-blue-700 font-bold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  <BarChart3 className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                  {!isCompact && <span>{t('nav.pnl', 'Báo cáo P&L')}</span>}
-                </button>
-              </div>
-            )}
+            </div>
           </div>
-
-          {/* 10. TMĐT & API */}
-          <div>
-            <button
-              id="nav-api-integrations"
-              onClick={() => handleNavClick('api-integrations')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-xs transition-all text-left ${
-                isCompact ? 'md:justify-center md:px-0' : ''
-              } ${
-                currentView === 'api-integrations'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-              }`}
-            >
-              <Globe className="w-4 h-4 shrink-0 text-blue-500" />
-              {!isCompact && (
-                <div className="flex items-center justify-between w-full">
-                  <span>{t('nav.ecommerce', 'TMĐT & API')}</span>
-                  <span className="text-[9px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.2 rounded">
-                    Live
-                  </span>
-                </div>
-              )}
-            </button>
-          </div>
-
-          {/* 11. KH & KPI */}
-          <div>
-            <button
-              id="nav-enterprise-planning"
-              onClick={() => handleNavClick('enterprise-planning')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl font-bold text-xs transition-all text-left ${
-                isCompact ? 'md:justify-center md:px-0' : ''
-              } ${
-                currentView === 'enterprise-planning'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-              }`}
-            >
-              <Target className="w-4 h-4 shrink-0 text-amber-500" />
-              {!isCompact && <span>{t('nav.planning', 'KH & KPI')}</span>}
-            </button>
-          </div>
-
-          {/* 12. BizOne AI */}
-          <div>
-            <button
-              id="nav-ai-assistant"
-              onClick={() => handleNavClick('ai-assistant')}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl font-bold text-xs transition-all text-left ${
-                isCompact ? 'md:justify-center md:px-0' : ''
-              } ${
-                currentView === 'ai-assistant'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'bg-emerald-50/70 text-emerald-800 hover:bg-emerald-100/80'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <Bot className="w-4 h-4 text-emerald-600 shrink-0" />
-                {!isCompact && <span>BizOne AI</span>}
-              </div>
-              {!isCompact && (
-                <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-600 text-white px-1.5 py-0.2 rounded">
-                  Beta
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
+        )}
 
         {/* Bottom Footer Actions (Left-Aligned) */}
         <div className="p-3 border-t border-slate-100 space-y-1 text-left">
@@ -729,11 +656,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           )}
 
-          {/* 13. TÀI KHOẢN & QUYỀN */}
+          {/* Switch to Owner App Toggle */}
+          {!isOwnerView && (
+            <button
+              id="nav-owner-platform"
+              onClick={() => handleNavClick('saas-platform-admin')}
+              className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-[11px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 transition-all cursor-pointer text-left ${
+                isCompact ? 'md:justify-center md:px-0' : ''
+              }`}
+              title="Quản trị nền tảng (Owner App)"
+            >
+              <ShieldAlert className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+              {!isCompact && <span>Chủ nền tảng (Owner)</span>}
+            </button>
+          )}
+
+          {/* TÀI KHOẢN & QUYỀN */}
           <button
             id="nav-users-roles"
             onClick={() => handleNavClick('users-roles')}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all text-left ${
+            className={`w-full flex items-center gap-3 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all text-left ${
               isCompact ? 'md:justify-center md:px-0' : ''
             } ${
               currentView === 'users-roles'
@@ -742,14 +684,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
             }`}
           >
             <ShieldCheck className="w-4 h-4 shrink-0 text-slate-500" />
-            {!isCompact && <span>{t('nav.usersRoles', 'Tài khoản & Quyền')}</span>}
+            {!isCompact && <span>Tài khoản & Quyền</span>}
           </button>
 
-          {/* 14. CÀI ĐẶT */}
+          {/* CÀI ĐẶT */}
           <button
             id="nav-settings"
             onClick={() => handleNavClick('settings')}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all text-left ${
+            className={`w-full flex items-center gap-3 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all text-left ${
               isCompact ? 'md:justify-center md:px-0' : ''
             } ${
               currentView === 'settings'
@@ -765,7 +707,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             id="nav-logout"
             onClick={() => onLogout?.()}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-all cursor-pointer text-left ${
+            className={`w-full flex items-center gap-3 px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-all cursor-pointer text-left ${
               isCompact ? 'md:justify-center md:px-0' : ''
             }`}
           >

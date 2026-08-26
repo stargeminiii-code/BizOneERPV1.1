@@ -46,6 +46,54 @@ export const VIEW_PERMISSION_MAP: Record<ViewMode, ViewPermissionRequirement> = 
     category: 'Kinh Doanh',
     description: 'Theo dõi tiến độ đơn bán, trạng thái thanh toán và xuất hóa đơn.'
   },
+  'sales-returns': {
+    view: 'sales-returns',
+    module: 'issues',
+    action: 'view',
+    label: 'Quản Lý Đổi Trả Hàng & Hoàn Tiền',
+    category: 'Kinh Doanh',
+    description: 'Xử lý các yêu cầu trả hàng, hoàn tiền mặt/chuyển khoản và nhập lại kho theo nguyên tắc FIFO.'
+  },
+  'sales-channels': {
+    view: 'sales-channels',
+    module: 'issues',
+    action: 'view',
+    label: 'Quản Lý Kênh Bán Đa Kênh (Omnichannel)',
+    category: 'Kinh Doanh',
+    description: 'Giám sát hiệu suất bán hàng qua các kênh POS, Takeaway, Shopee, GrabFood, Tiktok Shop...'
+  },
+  'sales-reconciliation': {
+    view: 'sales-reconciliation',
+    module: 'cashflow',
+    action: 'view',
+    label: 'Đối Soát Doanh Thu & Phí Sàn',
+    category: 'Kinh Doanh',
+    description: 'Đối soát chi tiết doanh thu, chiết khấu và phí hoa hồng kênh bán hàng.'
+  },
+  'sales-reports': {
+    view: 'sales-reports',
+    module: 'reports',
+    action: 'view',
+    label: 'Báo Cáo Bán Hàng & Phân Tích Kênh/Sản Phẩm',
+    category: 'Báo Cáo',
+    description: 'Phân tích đa chiều doanh thu, giá vốn thực tế, lợi nhuận gộp theo kênh và nhân viên.'
+  },
+  'finance': {
+    view: 'finance',
+    module: 'cashflow',
+    action: 'view',
+    label: 'Không Gian Quản Trị Tài Chính & Kế Toán',
+    category: 'Tài Chính',
+    description: 'Quản lý dòng tiền, lãi lỗ, ngân hàng và đối soát tài chính.'
+  },
+  'ccu': {
+    view: 'ccu',
+    module: 'products',
+    action: 'view',
+    label: 'Không Gian Vận Hành Lõi & Chuỗi Cung Ứng (CCU)',
+    category: 'Vận Hành',
+    description: 'Quản lý sản phẩm, kho vận, mua hàng, định mức và luân chuyển hàng hóa.'
+  },
   'inventory': {
     view: 'inventory',
     module: 'products',

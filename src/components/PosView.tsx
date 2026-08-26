@@ -19,6 +19,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { Customer, InventoryLot, Order, OrderItem, PaymentMethod, Product } from '../types';
+import { TransactionEngineService } from '../services/transactionEngine';
 
 interface PosViewProps {
   products: Product[];
@@ -247,6 +248,22 @@ export const PosView: React.FC<PosViewProps> = ({
     };
 
     onCompleteSale(newOrder);
+
+    // Record SALE in Transaction Engine (Single Source of Truth) with Idempotency Key
+    TransactionEngineService.createSaleTransaction({
+      idempotencyKey: TransactionEngineService.generateIdempotencyKey('POS', newOrder.code || newOrder.id),
+      orderId: newOrder.code || newOrder.id,
+      source: 'POS',
+      amount: newOrder.totalAmount,
+      status: 'CONFIRMED',
+      metadata: {
+        customerName: newOrder.customerName,
+        creator: newOrder.creator,
+        channel: 'POS Counter'
+      }
+    }).catch((err) => {
+      console.warn('Failed to record SALE in transaction engine:', err);
+    });
 
     if (paymentMethod === 'vietqr') {
       onOpenVietQr(newOrder);

@@ -20,36 +20,56 @@ import {
   ChevronRight,
   Eye,
   SlidersHorizontal,
-  Flame
+  History,
+  ShieldCheck,
+  Zap,
+  ShoppingBag
 } from 'lucide-react';
 import {
   INITIAL_BEVERAGES,
   INITIAL_INGREDIENTS,
   BeverageItem,
-  IngredientStock,
-  RecipeIngredient
+  IngredientStock
 } from '../data/beveragesData';
 import { formatNumberWithDots } from '../data/administrativeData';
+import { TemporalPriceManager } from './Temporal/TemporalPriceManager';
+import { RecipeBomManager } from './Temporal/RecipeBomManager';
+import { PreparationBatchManager } from './Temporal/PreparationBatchManager';
+import { ConsumptionLedgerView } from './Temporal/ConsumptionLedgerView';
+import { HistoricalOrderInspector } from './Temporal/HistoricalOrderInspector';
+import { TemporalBusinessEngine } from '../services/temporal/temporalService';
+import { Order } from '../types';
 
-export const BeveragesView: React.FC = () => {
+interface BeveragesViewProps {
+  onAddOrder?: (order: Order) => void;
+  tenantId?: string;
+  actorName?: string;
+}
+
+export const BeveragesView: React.FC<BeveragesViewProps> = ({
+  onAddOrder,
+  tenantId = 'TENANT-DEFAULT',
+  actorName = 'Quản trị viên / Barista'
+}) => {
   const [beverages, setBeverages] = useState<BeverageItem[]>(INITIAL_BEVERAGES);
-  const [ingredients, setIngredients] = useState<IngredientStock[]>(INITIAL_INGREDIENTS);
-  const [activeTab, setActiveTab] = useState<'menu' | 'recipe_bom' | 'ingredients' | 'pos_quick'>('menu');
+  const [activeTab, setActiveTab] = useState<
+    'menu' | 'recipe_bom' | 'temporal_prices' | 'batches' | 'consumption' | 'snapshots'
+  >('menu');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedBeverage, setSelectedBeverage] = useState<BeverageItem | null>(null);
+  const [cart, setCart] = useState<Array<{ beverage: BeverageItem; quantity: number }>>([]);
+  const [recentOrderSuccess, setRecentOrderSuccess] = useState<string | null>(null);
 
-  // Stats calculation
+  // Initialize Temporal Engine
+  TemporalBusinessEngine.initialize();
+
+  // Metrics
   const totalBeverageTypes = beverages.length;
   const totalRevenueToday = useMemo(() => {
     return beverages.reduce((sum, b) => sum + (b.totalRevenueToday || 0), 0);
   }, [beverages]);
   const totalCupsSoldToday = useMemo(() => {
     return beverages.reduce((sum, b) => sum + (b.totalSoldToday || 0), 0);
-  }, [beverages]);
-  const avgGrossMargin = useMemo(() => {
-    if (beverages.length === 0) return 0;
-    return (beverages.reduce((sum, b) => sum + b.marginPercent, 0) / beverages.length).toFixed(1);
   }, [beverages]);
 
   const filteredBeverages = useMemo(() => {
@@ -63,337 +83,430 @@ export const BeveragesView: React.FC = () => {
     });
   }, [beverages, selectedCategory, searchTerm]);
 
-  // Order Quick Simulation
-  const handleQuickOrder = (bev: BeverageItem) => {
-    setBeverages((prev) =>
-      prev.map((b) =>
-        b.id === bev.id
-          ? {
-              ...b,
-              totalSoldToday: b.totalSoldToday + 1,
-              totalRevenueToday: b.totalRevenueToday + b.sellingPrice
-            }
-          : b
-      )
-    );
-    // Deduct ingredients FIFO
-    setIngredients((prev) =>
-      prev.map((ing) => {
-        const recipeItem = bev.recipe.find((r) => r.ingredientSku === ing.sku);
-        if (recipeItem) {
-          const newQty = Math.max(0, ing.currentStock - recipeItem.quantity);
-          return { ...ing, currentStock: newQty };
-        }
-        return ing;
-      })
+  // Cart operations
+  const addToCart = (bev: BeverageItem) => {
+    setCart((prev) => {
+      const idx = prev.findIndex((item) => item.beverage.id === bev.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx].quantity += 1;
+        return next;
+      }
+      return [...prev, { beverage: bev, quantity: 1 }];
+    });
+  };
+
+  const removeFromCart = (bevId: string) => {
+    setCart((prev) => prev.filter((item) => item.beverage.id !== bevId));
+  };
+
+  const updateCartQty = (bevId: string, delta: number) => {
+    setCart((prev) =>
+      prev
+        .map((item) => {
+          if (item.beverage.id === bevId) {
+            const newQty = item.quantity + delta;
+            return newQty > 0 ? { ...item, quantity: newQty } : null;
+          }
+          return item;
+        })
+        .filter(Boolean) as Array<{ beverage: BeverageItem; quantity: number }>
     );
   };
 
+  const cartSubtotal = useMemo(() => {
+    return cart.reduce((sum, item) => sum + item.beverage.sellingPrice * item.quantity, 0);
+  }, [cart]);
+
+  // Execute Order
+  const handleCheckoutCart = () => {
+    if (cart.length === 0) return;
+
+    const orderId = `ORD-FNB-${Date.now()}`;
+    const orderCode = `FNB-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    const nowTime = new Date().toISOString();
+
+    const orderItems = cart.map((item) => ({
+      productId: item.beverage.id,
+      sku: item.beverage.code,
+      productName: item.beverage.name,
+      quantity: item.quantity,
+      price: item.beverage.sellingPrice,
+      totalPrice: item.beverage.sellingPrice * item.quantity,
+      fifoCost: item.beverage.standardCost * item.quantity
+    }));
+
+    const order: Order = {
+      id: orderId,
+      code: orderCode,
+      customerName: 'Khách mua tại quầy F&B',
+      customerPhone: '0900000000',
+      warehouseId: 'WH01',
+      branchId: 'BR01',
+      totalAmount: cartSubtotal,
+      discount: 0,
+      tax: 0,
+      status: 'completed',
+      paymentMethod: 'cash',
+      paymentStatus: 'paid',
+      createdAt: nowTime.replace('T', ' ').substring(0, 16),
+      creator: actorName,
+      items: orderItems
+    };
+    (order as any).tenantId = tenantId;
+
+    // 1. Process Consumption Engine (Deducts FIFO or Accumulates threshold)
+    TemporalBusinessEngine.processOrderConsumption(order, actorName);
+
+    // 2. Create Immutable Snapshot
+    TemporalBusinessEngine.createOrderSnapshot(order, nowTime);
+
+    // 3. Callback to main app if available
+    if (onAddOrder) {
+      onAddOrder(order);
+    }
+
+    // Update local sales stats
+    setBeverages((prev) =>
+      prev.map((b) => {
+        const inCart = cart.find((c) => c.beverage.id === b.id);
+        if (inCart) {
+          return {
+            ...b,
+            totalSoldToday: (b.totalSoldToday || 0) + inCart.quantity,
+            totalRevenueToday: (b.totalRevenueToday || 0) + inCart.quantity * b.sellingPrice
+          };
+        }
+        return b;
+      })
+    );
+
+    setCart([]);
+    setRecentOrderSuccess(`Đã chốt đơn ${orderCode} thành công! Đã tạo Snapshot bất biến.`);
+    setTimeout(() => setRecentOrderSuccess(null), 5000);
+  };
+
   return (
-    <div id="beverages-view-container" className="p-4 sm:p-6 md:p-8 space-y-6 max-w-[1680px] mx-auto font-['Plus_Jakarta_Sans',sans-serif]">
-      {/* Top Banner */}
-      <div className="bg-gradient-to-r from-amber-900 via-amber-800 to-amber-950 text-white rounded-3xl p-6 shadow-xl border border-amber-700/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+    <div id="beverages-view-container" className="p-4 sm:p-6 space-y-5 max-w-[1680px] mx-auto font-['Plus_Jakarta_Sans',sans-serif]">
+      {/* Header Banner */}
+      <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-2xs border border-slate-200/90 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-3">
-            <Coffee className="w-8 h-8 text-amber-300" />
-            <span>F&B & Recipe</span>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2.5">
+            <Coffee className="w-5 h-5 text-blue-600" />
+            <span>Định mức Công thức & BOM</span>
           </h1>
         </div>
 
-        {/* 4 Summary Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 w-full md:w-auto shrink-0">
-          <div className="bg-amber-950/60 border border-amber-700/60 rounded-2xl p-3 text-center min-w-[100px]">
-            <div className="text-[10px] text-amber-300 font-bold uppercase tracking-wider">Số món Menu</div>
-            <div className="text-lg font-black text-white mt-0.5">{totalBeverageTypes} món</div>
+        {/* Quick KPI Stats */}
+        <div className="grid grid-cols-2 gap-3 shrink-0">
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+            <span className="text-slate-500 text-[11px]">Doanh thu F&B:</span>
+            <div className="text-sm sm:text-base font-bold font-mono text-slate-900 mt-0.5">
+              {formatNumberWithDots(totalRevenueToday)} đ
+            </div>
           </div>
-          <div className="bg-amber-950/60 border border-amber-700/60 rounded-2xl p-3 text-center min-w-[100px]">
-            <div className="text-[10px] text-amber-300 font-bold uppercase tracking-wider">Đã pha hôm nay</div>
-            <div className="text-lg font-black text-emerald-400 mt-0.5">{totalCupsSoldToday} ly</div>
-          </div>
-          <div className="bg-amber-950/60 border border-amber-700/60 rounded-2xl p-3 text-center min-w-[100px]">
-            <div className="text-[10px] text-amber-300 font-bold uppercase tracking-wider">Doanh thu F&B</div>
-            <div className="text-lg font-black text-amber-200 mt-0.5">{formatNumberWithDots(totalRevenueToday)} đ</div>
-          </div>
-          <div className="bg-amber-950/60 border border-amber-700/60 rounded-2xl p-3 text-center min-w-[100px]">
-            <div className="text-[10px] text-amber-300 font-bold uppercase tracking-wider">Biên LN gộp TB</div>
-            <div className="text-lg font-black text-sky-300 mt-0.5">{avgGrossMargin}%</div>
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+            <span className="text-slate-500 text-[11px]">Số ly đã bán:</span>
+            <div className="text-sm sm:text-base font-bold font-mono text-blue-600 mt-0.5">
+              {totalCupsSoldToday} ly
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Main Tabs Navigation */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
+      {/* Navigation Tabs */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
         <button
           onClick={() => setActiveTab('menu')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
             activeTab === 'menu'
-              ? 'bg-amber-800 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
           }`}
         >
           <Coffee className="w-4 h-4" />
-          <span>Menu Đồ Uống & POS Bán Nhanh</span>
+          <span>Menu & Bán Nhanh POS</span>
         </button>
 
         <button
           onClick={() => setActiveTab('recipe_bom')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
             activeTab === 'recipe_bom'
-              ? 'bg-amber-800 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-          }`}
-        >
-          <Utensils className="w-4 h-4" />
-          <span>Định Lượng Công Thức (Recipe / BOM)</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('ingredients')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-            activeTab === 'ingredients'
-              ? 'bg-amber-800 text-white shadow-xs'
-              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
           }`}
         >
           <Layers className="w-4 h-4" />
-          <span>Kho Nguyên Liệu Pha Chế (FIFO)</span>
+          <span>Định Mức & Cây BOM Đa Cấp</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('temporal_prices')}
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
+            activeTab === 'temporal_prices'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+          }`}
+        >
+          <History className="w-4 h-4" />
+          <span>Phiên Bản Giá & Effective Dating</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('batches')}
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
+            activeTab === 'batches'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+          }`}
+        >
+          <Utensils className="w-4 h-4" />
+          <span>Mẻ Sơ Chế Bán Thành Phẩm</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('consumption')}
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
+            activeTab === 'consumption'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+          }`}
+        >
+          <FileSpreadsheet className="w-4 h-4" />
+          <span>Sổ Cái Tiêu Hao & Tích Lũy</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('snapshots')}
+          className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer ${
+            activeTab === 'snapshots'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4" />
+          <span>Thanh Tra Snapshot Bất Biến</span>
         </button>
       </div>
 
-      {/* Tab 1: Menu & POS Quick Dispense */}
+      {/* Success Alert */}
+      {recentOrderSuccess && (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-xs font-semibold flex items-center justify-between animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span>{recentOrderSuccess}</span>
+          </div>
+          <button
+            onClick={() => setActiveTab('snapshots')}
+            className="text-emerald-700 hover:underline text-xs font-bold cursor-pointer"
+          >
+            Xem Snapshot Bất Biến →
+          </button>
+        </div>
+      )}
+
+      {/* TAB 1: MENU & QUICK POS */}
       {activeTab === 'menu' && (
-        <div className="space-y-4">
-          {/* Filter Bar */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <div className="relative flex-1 sm:w-72">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left 2 Cols: Menu Catalog */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* Filter Bar */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[
+                  { id: 'all', label: 'Tất cả' },
+                  { id: 'coffee', label: 'Cà phê' },
+                  { id: 'tea', label: 'Trà & Matcha' },
+                  { id: 'smoothie', label: 'Sinh tố & Đá xay' },
+                  { id: 'snack', label: 'Bánh & Ăn nhẹ' }
+                ].map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setSelectedCategory(cat.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                      selectedCategory === cat.id
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Tìm món đồ uống, mã món..."
+                  placeholder="Tìm đồ uống, mã món..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                  className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-slate-900"
                 />
               </div>
-
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-700"
-              >
-                <option value="all">Tất cả danh mục</option>
-                <option value="cafe">Cà phê</option>
-                <option value="tea">Trà & Matcha</option>
-                <option value="smoothie">Sinh tố</option>
-                <option value="healthy">Thảo mộc & Healthy</option>
-              </select>
             </div>
 
-            <div className="text-xs text-slate-500 font-medium">
-              Hiển thị <span className="font-bold text-slate-900">{filteredBeverages.length}</span> món
-            </div>
-          </div>
-
-          {/* Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {filteredBeverages.map((bev) => (
-              <div
-                key={bev.id}
-                className="bg-white rounded-3xl border border-slate-200 shadow-xs hover:shadow-md transition-all overflow-hidden flex flex-col justify-between"
-              >
-                <div>
-                  <div className="relative h-44 w-full bg-slate-100 overflow-hidden">
-                    <img
-                      src={bev.image}
-                      alt={bev.name}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
-                    />
-                    <div className="absolute top-2.5 left-2.5 px-2 py-0.5 bg-slate-900/80 backdrop-blur-xs text-white text-[10px] font-bold rounded-lg font-mono">
-                      {bev.code}
-                    </div>
-                    <div className="absolute top-2.5 right-2.5 px-2 py-0.5 bg-emerald-600 text-white text-[10px] font-black rounded-lg">
-                      Margin {bev.marginPercent}%
-                    </div>
-                  </div>
-
-                  <div className="p-4 space-y-2.5">
-                    <div className="flex items-center justify-between text-[11px] text-slate-500">
-                      <span>{bev.categoryName}</span>
-                      <span className="flex items-center gap-1 text-slate-600 font-medium">
-                        <Clock className="w-3.5 h-3.5 text-amber-600" /> {bev.preparationTimeMinutes} phút
+            {/* Drink Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+              {filteredBeverages.map((bev) => (
+                <div
+                  key={bev.id}
+                  className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:border-slate-300 transition flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="font-mono text-[10px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded">
+                          {bev.code}
+                        </span>
+                        <h4 className="text-sm font-bold text-slate-900 mt-1">{bev.name}</h4>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-slate-900 shrink-0">
+                        {formatNumberWithDots(bev.sellingPrice)} đ
                       </span>
                     </div>
-
-                    <h3 className="font-bold text-sm text-slate-900 line-clamp-1">{bev.name}</h3>
-
-                    <div className="flex items-baseline justify-between pt-1">
-                      <div>
-                        <div className="text-xs text-slate-400">Giá bán</div>
-                        <div className="text-base font-black text-amber-800">
-                          {formatNumberWithDots(bev.sellingPrice)} đ
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs text-slate-400">Giá vốn BOM</div>
-                        <div className="text-xs font-bold text-slate-600">
-                          {formatNumberWithDots(bev.estimatedCostPrice)} đ
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Recipe summary pill */}
-                    <div className="p-2 bg-slate-50 rounded-xl border border-slate-100 text-[11px] text-slate-600 space-y-1">
-                      <div className="font-bold text-slate-700 flex items-center gap-1 text-[10px] uppercase">
-                        <Utensils className="w-3 h-3 text-amber-600" />
-                        Định lượng gồm ({bev.recipe.length} thành phần):
-                      </div>
-                      <div className="text-[10px] text-slate-500 truncate">
-                        {bev.recipe.map((r) => `${r.ingredientName} (${r.quantity}${r.unit})`).join(', ')}
-                      </div>
+                    <p className="text-[11px] text-slate-500 mt-1 line-clamp-2">{bev.description}</p>
+                    
+                    <div className="mt-2 text-[10px] text-slate-600 bg-slate-50 p-2 rounded border border-slate-100 space-y-0.5 font-mono">
+                      <div>Định mức: {bev.recipe?.length || 0} thành phần</div>
+                      <div>Giá vốn tiêu chuẩn: {formatNumberWithDots(bev.standardCost)} đ</div>
                     </div>
                   </div>
-                </div>
 
-                <div className="p-4 pt-0">
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[11px] text-slate-500">
+                      Đã bán: <strong>{bev.totalSoldToday || 0} ly</strong>
+                    </span>
+                    <button
+                      onClick={() => addToCart(bev)}
+                      className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold shadow-xs transition cursor-pointer flex items-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Thêm đơn</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Right 1 Col: Quick POS Cart & Snapshot Trigger */}
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs flex flex-col justify-between space-y-4">
+            <div>
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <ShoppingBag className="w-4 h-4 text-indigo-600" />
+                  <span>Giỏ Hàng Quầy F&B ({cart.length})</span>
+                </h3>
+                {cart.length > 0 && (
                   <button
-                    onClick={() => handleQuickOrder(bev)}
-                    className="w-full py-2.5 bg-amber-800 hover:bg-amber-900 active:scale-95 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                    onClick={() => setCart([])}
+                    className="text-[11px] text-rose-600 hover:underline font-semibold"
                   >
-                    <Flame className="w-4 h-4 text-amber-300" />
-                    <span>Pha Chế & Trừ Kho 1 Ly</span>
+                    Xóa tất cả
                   </button>
-                </div>
+                )}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* Tab 2: Recipe BOM Detail */}
-      {activeTab === 'recipe_bom' && (
-        <div className="space-y-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">Bảng Công Thức Định Lượng (Bill of Materials)</h2>
-              <p className="text-xs text-slate-500">Mỗi ly đồ uống tự động tính giá vốn chính xác theo giá lô nhập kho FIFO</p>
-            </div>
-            <button className="px-3.5 py-2 bg-amber-800 hover:bg-amber-900 text-white rounded-xl text-xs font-bold flex items-center gap-1.5">
-              <Plus className="w-4 h-4" /> Thêm Công Thức Mới
-            </button>
-          </div>
-
-          <div className="divide-y divide-slate-100">
-            {beverages.map((bev) => (
-              <div key={bev.id} className="py-4 space-y-3">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-3">
-                    <img src={bev.image} alt="" className="w-12 h-12 rounded-xl object-cover" />
+              {/* Cart Items List */}
+              <div className="mt-3 space-y-2.5 max-h-[400px] overflow-y-auto">
+                {cart.map((item) => (
+                  <div
+                    key={item.beverage.id}
+                    className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs flex items-center justify-between gap-2"
+                  >
                     <div>
-                      <div className="font-bold text-sm text-slate-900">{bev.name}</div>
-                      <div className="text-xs text-slate-500">Mã món: <span className="font-mono font-bold text-slate-700">{bev.code}</span> • Giá bán: <span className="font-bold text-amber-800">{formatNumberWithDots(bev.sellingPrice)} đ</span></div>
+                      <div className="font-bold text-slate-900">{item.beverage.name}</div>
+                      <div className="text-[11px] font-mono text-slate-500">
+                        {formatNumberWithDots(item.beverage.sellingPrice)} đ x {item.quantity}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center border border-slate-300 rounded-md bg-white">
+                        <button
+                          onClick={() => updateCartQty(item.beverage.id, -1)}
+                          className="px-2 py-0.5 text-slate-600 hover:bg-slate-100 font-bold"
+                        >
+                          -
+                        </button>
+                        <span className="px-2 py-0.5 font-bold font-mono text-slate-900">
+                          {item.quantity}
+                        </span>
+                        <button
+                          onClick={() => updateCartQty(item.beverage.id, 1)}
+                          className="px-2 py-0.5 text-slate-600 hover:bg-slate-100 font-bold"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => removeFromCart(item.beverage.id)}
+                        className="text-slate-400 hover:text-rose-600 font-bold px-1"
+                      >
+                        ✕
+                      </button>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs text-slate-500">Tổng giá vốn BOM: <span className="font-black text-slate-900">{formatNumberWithDots(bev.estimatedCostPrice)} đ</span></div>
-                    <div className="text-xs font-bold text-emerald-600">Lãi gộp: {formatNumberWithDots(bev.sellingPrice - bev.estimatedCostPrice)} đ ({bev.marginPercent}%)</div>
-                  </div>
-                </div>
+                ))}
 
-                <div className="bg-slate-50 rounded-2xl p-3 border border-slate-100 overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="text-slate-400 font-bold border-b border-slate-200/60 pb-2">
-                        <th className="py-1.5 px-2">Mã Nguyên Liệu</th>
-                        <th className="py-1.5 px-2">Tên Nguyên Liệu / Bao Bì</th>
-                        <th className="py-1.5 px-2 text-right">Định Lượng / 1 Ly</th>
-                        <th className="py-1.5 px-2 text-right">Đơn Giá Vốn FIFO</th>
-                        <th className="py-1.5 px-2 text-right">Thành Tiền Vốn</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200/40">
-                      {bev.recipe.map((r) => (
-                        <tr key={r.id} className="hover:bg-slate-100/50">
-                          <td className="py-2 px-2 font-mono text-slate-600">{r.ingredientSku}</td>
-                          <td className="py-2 px-2 font-medium text-slate-800">{r.ingredientName}</td>
-                          <td className="py-2 px-2 text-right font-bold text-slate-900">{r.quantity} {r.unit}</td>
-                          <td className="py-2 px-2 text-right text-slate-600">{formatNumberWithDots(r.costPerUnit)} đ/{r.unit}</td>
-                          <td className="py-2 px-2 text-right font-black text-amber-900">{formatNumberWithDots(r.subtotalCost)} đ</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                {cart.length === 0 && (
+                  <div className="py-12 text-center text-slate-400 text-xs font-medium">
+                    Giỏ hàng trống. Bấm "+ Thêm đơn" trên từng món để bắt đầu.
+                  </div>
+                )}
               </div>
-            ))}
+            </div>
+
+            {/* Cart Footer */}
+            <div className="pt-4 border-t border-slate-100 space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-semibold text-slate-700">Tổng thanh toán:</span>
+                <span className="font-mono font-bold text-base text-slate-900">
+                  {formatNumberWithDots(cartSubtotal)} đ
+                </span>
+              </div>
+
+              <button
+                disabled={cart.length === 0}
+                onClick={handleCheckoutCart}
+                className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold shadow-xs transition flex items-center justify-center gap-2 ${
+                  cart.length > 0
+                    ? 'bg-slate-900 hover:bg-slate-800 text-white cursor-pointer'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <Zap className="w-4 h-4 text-amber-400" />
+                <span>Chốt Đơn & Tạo Snapshot Bất Biến</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Tab 3: Ingredients Stock FIFO */}
-      {activeTab === 'ingredients' && (
-        <div className="space-y-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">Tồn Kho Nguyên Liệu Pha Chế (FIFO Costing)</h2>
-              <p className="text-xs text-slate-500">Theo dõi tồn kho gam/ml của Matcha, Cà phê, Sữa và Hạn sử dụng nguyên liệu</p>
-            </div>
-            <button className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5">
-              <Plus className="w-4 h-4" /> Nhập Kho Nguyên Liệu (PO)
-            </button>
-          </div>
+      {/* TAB 2: RECIPE & MULTI-LEVEL BOM */}
+      {activeTab === 'recipe_bom' && (
+        <RecipeBomManager tenantId={tenantId} actorName={actorName} />
+      )}
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
-                  <th className="py-3 px-3">Mã SKU</th>
-                  <th className="py-3 px-3">Tên Nguyên Liệu</th>
-                  <th className="py-3 px-3">Phân Loại</th>
-                  <th className="py-3 px-3 text-right">Tồn Kho Thực Tế</th>
-                  <th className="py-3 px-3 text-right">Định Mức Tối Thiểu</th>
-                  <th className="py-3 px-3 text-right">Giá Vốn FIFO</th>
-                  <th className="py-3 px-3">Hạn Dùng (Expiry)</th>
-                  <th className="py-3 px-3">Trạng Thái</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {ingredients.map((ing) => {
-                  const isLow = ing.currentStock <= ing.minAlertStock;
-                  return (
-                    <tr key={ing.id} className="hover:bg-slate-50/70">
-                      <td className="py-3 px-3 font-mono font-bold text-slate-700">{ing.sku}</td>
-                      <td className="py-3 px-3 font-semibold text-slate-900">{ing.name}</td>
-                      <td className="py-3 px-3 text-slate-600">{ing.category}</td>
-                      <td className="py-3 px-3 text-right font-black text-slate-900">
-                        {formatNumberWithDots(ing.currentStock)} {ing.unit}
-                      </td>
-                      <td className="py-3 px-3 text-right text-slate-500">
-                        {formatNumberWithDots(ing.minAlertStock)} {ing.unit}
-                      </td>
-                      <td className="py-3 px-3 text-right font-bold text-blue-700">
-                        {formatNumberWithDots(ing.fifoCostPrice)} đ/{ing.unit}
-                      </td>
-                      <td className="py-3 px-3 font-mono text-slate-600">{ing.expiryDate}</td>
-                      <td className="py-3 px-3">
-                        {isLow ? (
-                          <span className="px-2 py-0.5 bg-red-100 text-red-700 font-bold rounded-full text-[10px] flex items-center gap-1 w-fit">
-                            <AlertTriangle className="w-3 h-3" /> Cảnh báo sắp hết
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 font-bold rounded-full text-[10px] flex items-center gap-1 w-fit">
-                            <CheckCircle2 className="w-3 h-3" /> Đủ tồn an toàn
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      {/* TAB 3: TEMPORAL PRICES & TIMELINE */}
+      {activeTab === 'temporal_prices' && (
+        <TemporalPriceManager tenantId={tenantId} actorName={actorName} />
+      )}
+
+      {/* TAB 4: PREPARATION BATCHES */}
+      {activeTab === 'batches' && (
+        <PreparationBatchManager tenantId={tenantId} actorName={actorName} />
+      )}
+
+      {/* TAB 5: CONSUMPTION LEDGER */}
+      {activeTab === 'consumption' && (
+        <ConsumptionLedgerView tenantId={tenantId} />
+      )}
+
+      {/* TAB 6: IMMUTABLE SNAPSHOTS */}
+      {activeTab === 'snapshots' && (
+        <HistoricalOrderInspector tenantId={tenantId} />
       )}
     </div>
   );

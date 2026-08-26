@@ -531,11 +531,12 @@ export const fifoEngine = {
     const newAdjustmentLayers: InventoryLayer[] = [];
 
     for (const item of stocktake.items) {
-      if (item.diffQty === 0) continue;
+      const diff = Number(item.diffQty ?? item.diffQuantity ?? ((item.actualQty ?? item.actualQuantity ?? 0) - (item.systemQty ?? item.systemQuantity ?? 0)));
+      if (diff === 0) continue;
 
-      if (item.diffQty < 0) {
+      if (diff < 0) {
         // Discrepancy Deficit (Thiếu hàng -> Giảm FIFO)
-        const qtyToReduce = Math.abs(item.diffQty);
+        const qtyToReduce = Math.abs(diff);
         const allocResult = this.previewFifoAllocation(item.sku, qtyToReduce, workingLayers, {
           issueId: stocktake.id,
           issueCode: stocktake.code,
@@ -569,7 +570,7 @@ export const fifoEngine = {
         }
       } else {
         // Discrepancy Surplus (Thừa hàng -> Tạo Adjustment Layer mới)
-        const surplusQty = item.diffQty;
+        const surplusQty = diff;
         const layerId = `ADJ-INC-${stocktake.code}-${item.sku}`;
         const newAdjLayer: InventoryLayer = {
           id: `LAYER-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -655,10 +656,10 @@ export const fifoEngine = {
     const transactions: StockTransaction[] = [];
     const auditLogs: AuditLog[] = [];
 
-    po.items.forEach((item: PurchaseOrderItem, idx: number) => {
+    po.items.forEach((item: any, idx: number) => {
       const layerId = item.lotId || `${po.code}-${String(idx + 1).padStart(2, '0')}`;
-      const unitCost = item.price;
-      const unitSale = item.sellingPrice || unitCost * 1.25;
+      const unitCost = Number(item.price ?? item.unitPrice ?? item.costPrice ?? 0);
+      const unitSale = item.sellingPrice || item.salePrice || (unitCost > 0 ? unitCost * 1.25 : 0);
 
       const layer: InventoryLayer = {
         id: `LAYER-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
@@ -677,8 +678,8 @@ export const fifoEngine = {
         supplierName: po.supplierName,
         receiptId: po.id,
         receiptCode: po.code,
-        receivedAt: po.createdAt.split(' ')[0] || new Date().toISOString().split('T')[0],
-        createdAt: new Date().toISOString(),
+        receivedAt: po.createdAt ? po.createdAt.split(' ')[0] : (po.orderDate || new Date().toISOString().split('T')[0]),
+        createdAt: po.createdAt || new Date().toISOString(),
         expiryDate: item.expiryDate,
         manufacturingDate: item.manufacturingDate,
         quantityReceived: item.quantity,
@@ -805,5 +806,108 @@ export const fifoEngine = {
       const validCost = isNaN(unitCost) ? 0 : unitCost;
       return total + validQty * validCost;
     }, 0);
+  },
+
+  /**
+   * Calculate 7 standard stock aging buckets for active inventory layers
+   */
+  calculateAgingBuckets(
+    layers: InventoryLayer[],
+    referenceDate: Date = new Date()
+  ): Record<
+    'under7d' | 'sevenTo30d' | 'thirtyTo90d' | 'ninetyTo180d' | 'oneEightyTo360d' | 'oneTo2y' | 'over2y',
+    { label: string; totalQuantity: number; totalValue: number; layers: InventoryLayer[] }
+  > {
+    const buckets = {
+      under7d: { label: '< 7 ngày', totalQuantity: 0, totalValue: 0, layers: [] as InventoryLayer[] },
+      sevenTo30d: { label: '7–30 ngày', totalQuantity: 0, totalValue: 0, layers: [] as InventoryLayer[] },
+      thirtyTo90d: { label: '30–90 ngày', totalQuantity: 0, totalValue: 0, layers: [] as InventoryLayer[] },
+      ninetyTo180d: { label: '90–180 ngày', totalQuantity: 0, totalValue: 0, layers: [] as InventoryLayer[] },
+      oneEightyTo360d: { label: '180–360 ngày', totalQuantity: 0, totalValue: 0, layers: [] as InventoryLayer[] },
+      oneTo2y: { label: '1–2 năm', totalQuantity: 0, totalValue: 0, layers: [] as InventoryLayer[] },
+      over2y: { label: '> 2 năm', totalQuantity: 0, totalValue: 0, layers: [] as InventoryLayer[] }
+    };
+
+    const activeLayers = layers.filter(
+      (l) => (Number(l.quantityRemaining ?? l.remainingQuantity ?? 0) > 0) && l.status !== 'exhausted'
+    );
+
+    for (const layer of activeLayers) {
+      const qty = Number(layer.quantityRemaining ?? layer.remainingQuantity ?? 0) || 0;
+      const unitCost = Number(layer.purchasePrice ?? layer.costPrice ?? 0) || 0;
+      const value = qty * unitCost;
+
+      const dateStr = layer.receivedAt || layer.intakeDate || layer.createdAt || '2026-08-01';
+      const intakeTime = new Date(dateStr).getTime();
+      const ageDays = Math.max(0, Math.floor((referenceDate.getTime() - intakeTime) / (1000 * 3600 * 24)));
+
+      let bucketKey: keyof typeof buckets = 'under7d';
+      if (ageDays < 7) bucketKey = 'under7d';
+      else if (ageDays <= 30) bucketKey = 'sevenTo30d';
+      else if (ageDays <= 90) bucketKey = 'thirtyTo90d';
+      else if (ageDays <= 180) bucketKey = 'ninetyTo180d';
+      else if (ageDays <= 360) bucketKey = 'oneEightyTo360d';
+      else if (ageDays <= 720) bucketKey = 'oneTo2y';
+      else bucketKey = 'over2y';
+
+      buckets[bucketKey].totalQuantity += qty;
+      buckets[bucketKey].totalValue += value;
+      buckets[bucketKey].layers.push(layer);
+    }
+
+    return buckets;
+  },
+
+  /**
+   * Calculate 6 shelf life remaining buckets based on expiryDate
+   */
+  calculateShelfLifeBuckets(
+    layers: InventoryLayer[],
+    referenceDate: Date = new Date()
+  ): Record<
+    'expired' | 'under7d' | 'eightTo30d' | 'thirtyOneTo90d' | 'over90d' | 'noExpiryTracking',
+    { label: string; totalQuantity: number; totalValue: number; layers: InventoryLayer[] }
+  > {
+    const buckets = {
+      expired: { label: 'Đã hết hạn', totalQuantity: 0, totalValue: 0, layers: [] as InventoryLayer[] },
+      under7d: { label: '≤ 7 ngày', totalQuantity: 0, totalValue: 0, layers: [] as InventoryLayer[] },
+      eightTo30d: { label: '8–30 ngày', totalQuantity: 0, totalValue: 0, layers: [] as InventoryLayer[] },
+      thirtyOneTo90d: { label: '31–90 ngày', totalQuantity: 0, totalValue: 0, layers: [] as InventoryLayer[] },
+      over90d: { label: '> 90 ngày', totalQuantity: 0, totalValue: 0, layers: [] as InventoryLayer[] },
+      noExpiryTracking: { label: 'Không quản lý date', totalQuantity: 0, totalValue: 0, layers: [] as InventoryLayer[] }
+    };
+
+    const activeLayers = layers.filter(
+      (l) => (Number(l.quantityRemaining ?? l.remainingQuantity ?? 0) > 0) && l.status !== 'exhausted'
+    );
+
+    for (const layer of activeLayers) {
+      const qty = Number(layer.quantityRemaining ?? layer.remainingQuantity ?? 0) || 0;
+      const unitCost = Number(layer.purchasePrice ?? layer.costPrice ?? 0) || 0;
+      const value = qty * unitCost;
+
+      if (!layer.expiryDate) {
+        buckets.noExpiryTracking.totalQuantity += qty;
+        buckets.noExpiryTracking.totalValue += value;
+        buckets.noExpiryTracking.layers.push(layer);
+        continue;
+      }
+
+      const expiryTime = new Date(layer.expiryDate).getTime();
+      const remainingDays = Math.floor((expiryTime - referenceDate.getTime()) / (1000 * 3600 * 24));
+
+      let bucketKey: keyof typeof buckets = 'noExpiryTracking';
+      if (remainingDays < 0) bucketKey = 'expired';
+      else if (remainingDays <= 7) bucketKey = 'under7d';
+      else if (remainingDays <= 30) bucketKey = 'eightTo30d';
+      else if (remainingDays <= 90) bucketKey = 'thirtyOneTo90d';
+      else bucketKey = 'over90d';
+
+      buckets[bucketKey].totalQuantity += qty;
+      buckets[bucketKey].totalValue += value;
+      buckets[bucketKey].layers.push(layer);
+    }
+
+    return buckets;
   }
 };
