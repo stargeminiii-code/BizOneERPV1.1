@@ -1077,7 +1077,7 @@ export const PlatformAdminView: React.FC<PlatformAdminViewProps> = ({
             <div>
               <h2 className="text-lg font-bold text-white">Danh Mục Gói Dịch Vụ & License Keys</h2>
               <p className="text-xs text-slate-400">
-                Toàn bộ các gói dịch vụ đều Full tính năng, tối đa 3 User/Tenant theo đúng định hướng thương mại
+                Toàn bộ các gói dịch vụ đều Full tính năng (Gói Dùng thử 1 User, các gói trả phí tối đa 3 User/Tenant)
               </p>
             </div>
 
@@ -1107,7 +1107,7 @@ export const PlatformAdminView: React.FC<PlatformAdminViewProps> = ({
                       <CheckCircle2 className="w-3.5 h-3.5" /> Full toàn bộ tính năng
                     </div>
                     <div className="flex items-center gap-1.5 text-slate-300">
-                      <Users className="w-3.5 h-3.5 text-slate-400" /> Tối đa 3 User
+                      <Users className="w-3.5 h-3.5 text-slate-400" /> Tối đa {p.maxUsers || (p.code === 'TRIAL_7_DAYS' ? 1 : 3)} User
                     </div>
                     <div className="flex items-center gap-1.5 text-slate-300">
                       <ShieldCheck className="w-3.5 h-3.5 text-slate-400" /> Bản quyền riêng biệt

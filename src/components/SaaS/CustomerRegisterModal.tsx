@@ -803,7 +803,7 @@ export const CustomerRegisterModal: React.FC<CustomerRegisterModalProps> = ({
 
                         <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
                           <span className="flex items-center gap-1 font-semibold text-slate-700">
-                            <Users className="w-3.5 h-3.5 text-blue-500" /> 3 User
+                            <Users className="w-3.5 h-3.5 text-blue-500" /> {p.maxUsers || (p.code === 'TRIAL_7_DAYS' ? 1 : 3)} User
                           </span>
                           <span className="font-bold text-emerald-600">Full tính năng</span>
                         </div>

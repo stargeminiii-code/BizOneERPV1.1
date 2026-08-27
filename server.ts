@@ -2507,7 +2507,7 @@ async function startServer() {
   // =========================================================================
 
   const SAAS_PLANS = [
-    { id: 'plan-trial-7-days', code: 'TRIAL_7_DAYS', name: 'Dùng Thử 07 Ngày', price: 0, durationDays: 7, maxUsers: 3, features: 'FULL', badge: 'Dùng thử 7 ngày', isTrial: true },
+    { id: 'plan-trial-7-days', code: 'TRIAL_7_DAYS', name: 'Dùng Thử 07 Ngày', price: 0, durationDays: 7, maxUsers: 1, features: 'FULL', badge: 'Dùng thử 7 ngày', isTrial: true },
     { id: 'plan-monthly', code: 'MONTHLY', name: 'Gói 1 Tháng', price: 99000, durationDays: 30, maxUsers: 3, features: 'FULL' },
     { id: 'plan-quarterly', code: 'QUARTERLY', name: 'Gói 3 Tháng', price: 249000, durationDays: 90, maxUsers: 3, features: 'FULL' },
     { id: 'plan-six-months', code: 'SIX_MONTHS', name: 'Gói 6 Tháng', price: 399000, durationDays: 180, maxUsers: 3, features: 'FULL' },
@@ -2666,7 +2666,7 @@ async function startServer() {
       adminEmail: targetAdminEmail,
       adminPhone: targetAdminPhone,
       status: 'ACTIVE',
-      maxUsers: 3,
+      maxUsers: isTrial ? 1 : (plan.maxUsers || 3),
       activeUsersCount: 1,
       planId: plan.id,
       planCode: plan.code,
