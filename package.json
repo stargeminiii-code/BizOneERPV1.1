@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "node scripts/render-prepare.mjs && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build": "node -e \"const fs=require('fs');const p='scripts/render-prepare.mjs';let s=fs.readFileSync(p,'utf8');const bs=String.fromCharCode(92),bt=String.fromCharCode(96);s=s.split(bs.repeat(3)+bt).join(bs+bt);s=s.split(bs.repeat(4)+'${').join(bs+'${');s=s.split(bs.repeat(4)+'D').join(bs.repeat(2)+'D');fs.writeFileSync(p,s)\" && node scripts/render-prepare.mjs && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
@@ -15,7 +15,7 @@
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
-    "@types/bcryptjs": "^3.0.0",
+    "@types/bcryptjs": "^3.0.3",
     "@vitejs/plugin-react": "^5.0.4",
     "bcryptjs": "^3.0.3",
     "canvas-confetti": "^1.9.4",
