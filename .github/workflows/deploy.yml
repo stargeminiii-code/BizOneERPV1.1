@@ -16,6 +16,9 @@ concurrency:
   group: github-pages
   cancel-in-progress: true
 
+env:
+  VITE_API_BASE_URL: https://api.wiup.vn
+
 jobs:
   build:
     name: Build BizOne ERP
@@ -40,10 +43,17 @@ jobs:
         run: npm run lint
         continue-on-error: false
 
+      - name: Verify API configuration
+        run: |
+          test -n "$VITE_API_BASE_URL"
+          test "$VITE_API_BASE_URL" = "https://api.wiup.vn"
+          echo "Frontend API base: $VITE_API_BASE_URL"
+
       - name: Build BizOne ERP
         run: npm run build
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VITE_API_BASE_URL: ${{ env.VITE_API_BASE_URL }}
 
       - name: Verify build output
         run: |
