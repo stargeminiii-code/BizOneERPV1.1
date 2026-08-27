@@ -38,6 +38,28 @@
         }
       }(window.location));
     </script>
+    <script>
+      // Production API bridge: GitHub Pages cannot serve POST /api/*.
+      // Route all relative /api/* requests to the Render backend before the app loads.
+      (function () {
+        var API_BASE = 'https://api.wiup.vn';
+        var nativeFetch = window.fetch.bind(window);
+
+        window.fetch = function (input, init) {
+          var url = input instanceof Request ? input.url : String(input);
+          var nextInput = input;
+
+          if (url.indexOf('/api/') === 0) {
+            nextInput = API_BASE + url;
+          } else if (url.indexOf(window.location.origin + '/api/') === 0) {
+            var parsed = new URL(url);
+            nextInput = API_BASE + parsed.pathname + parsed.search;
+          }
+
+          return nativeFetch(nextInput, init);
+        };
+      })();
+    </script>
     <script src="/registration-otp-bridge.js"></script>
     <script type="module" src="/src/main.tsx"></script>
     <script>
