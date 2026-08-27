@@ -93,9 +93,14 @@ if (IS_PRODUCTION && !rawAdminPassword) {
   );
 }
 
-const SUPER_ADMIN_ENV_PASSWORD = rawAdminPassword || 'Admin@123456';
-const DEMO_ENV_PASSWORD = (process.env.DEMO_INITIAL_PASSWORD && process.env.DEMO_INITIAL_PASSWORD.trim()) || 'Demo@123456';
-const STAFF_ENV_PASSWORD = (process.env.STAFF_INITIAL_PASSWORD && process.env.STAFF_INITIAL_PASSWORD.trim()) || 'Staff@123456';
+// In local dev without env variables, generate dynamic fallback credentials without committing secrets to repository
+const SUPER_ADMIN_ENV_PASSWORD = rawAdminPassword || crypto.randomBytes(8).toString('hex');
+const DEMO_ENV_PASSWORD = (process.env.DEMO_INITIAL_PASSWORD && process.env.DEMO_INITIAL_PASSWORD.trim()) || crypto.randomBytes(8).toString('hex');
+const STAFF_ENV_PASSWORD = (process.env.STAFF_INITIAL_PASSWORD && process.env.STAFF_INITIAL_PASSWORD.trim()) || crypto.randomBytes(8).toString('hex');
+
+if (!rawAdminPassword && !IS_PRODUCTION) {
+  console.log(`[DEV_AUTH_INFO] Local Dev Super Admin Temp Password generated: ${SUPER_ADMIN_ENV_PASSWORD}`);
+}
 
 // Bcrypt Hashes initialized dynamically from environment variables
 const DEFAULT_ADMIN_HASH = bcrypt.hashSync(SUPER_ADMIN_ENV_PASSWORD, 10);
@@ -2571,7 +2576,7 @@ async function startServer() {
       delete targetReg.adminPassword; // Purge plaintext
     }
     if (!passwordHash) {
-      passwordHash = bcrypt.hashSync('Admin@BizOne2026!', 10);
+      passwordHash = bcrypt.hashSync(crypto.randomBytes(12).toString('hex'), 10);
     }
 
     const targetAdminEmail = String(targetReg.adminEmail || targetReg.email || '').trim().toLowerCase();

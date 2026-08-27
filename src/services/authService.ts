@@ -353,19 +353,13 @@ export class AuthService {
       };
     }
 
-    // Check password: Super Admin default 'Admin@123456', demo 'demo' or standard passwords
-    const isValidPass =
-      cleanPass === 'Admin@123456' ||
-      cleanPass === 'demo' ||
-      cleanPass === 'Demo@123456' ||
-      cleanPass === 'Staff@123456' ||
-      cleanPass === 'Admin@BizOne2026!' ||
-      cleanPass.length >= 6; // Allow local demo password if in standalone mode
+    // In standalone/offline client fallback, validate minimum password length requirement without exposing plain secrets in source code
+    const isValidPass = Boolean(cleanPass) && cleanPass.length >= 6;
 
     if (!isValidPass) {
       return {
         success: false,
-        error: 'Mật khẩu không chính xác. Mật khẩu mặc định Super Admin là Admin@123456',
+        error: 'Tài khoản hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.',
         errorType: 'INVALID_PASSWORD'
       };
     }
