@@ -656,8 +656,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           )}
 
-          {/* Switch to Owner App Toggle */}
-          {!isOwnerView && (
+          {/* Switch to Owner App Toggle (ONLY for Super Admin) */}
+          {currentUser?.role === 'super_admin' && !isOwnerView && (
             <button
               id="nav-owner-platform"
               onClick={() => handleNavClick('saas-platform-admin')}

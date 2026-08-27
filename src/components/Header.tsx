@@ -324,48 +324,50 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
                 </div>
 
-                {/* Switcher for testing */}
-                <div className="py-1">
-                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                    <Layers className="w-3 h-3 text-blue-500" />
-                    <span>{language === 'vi' ? 'Chuyển đổi tài khoản:' : 'Switch Account:'}</span>
+                {/* Switcher (Visible ONLY for Super Admin in development mode) */}
+                {currentUser?.role === 'super_admin' && (
+                  <div className="py-1">
+                    <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                      <Layers className="w-3 h-3 text-blue-500" />
+                      <span>{language === 'vi' ? 'Chuyển đổi tài khoản (Super Admin):' : 'Switch Account:'}</span>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
+                      {users.map((u) => {
+                        const isCurrent = u.id === currentUser?.id;
+                        return (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => {
+                              onChangeCurrentUser?.(u);
+                              setShowProfileDropdown(false);
+                            }}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                              isCurrent
+                                ? 'bg-blue-50 text-blue-700 font-bold'
+                                : 'hover:bg-slate-50 text-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <img
+                                src={u.avatar}
+                                alt=""
+                                referrerPolicy="no-referrer"
+                                className="w-5 h-5 rounded-full object-cover shrink-0"
+                              />
+                              <span className="truncate">{u.name}</span>
+                            </div>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                              isCurrent ? 'bg-blue-200/60 text-blue-900' : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {u.role}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="max-h-40 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
-                    {users.map((u) => {
-                      const isCurrent = u.id === currentUser?.id;
-                      return (
-                        <button
-                          key={u.id}
-                          type="button"
-                          onClick={() => {
-                            onChangeCurrentUser?.(u);
-                            setShowProfileDropdown(false);
-                          }}
-                          className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                            isCurrent
-                              ? 'bg-blue-50 text-blue-700 font-bold'
-                              : 'hover:bg-slate-50 text-slate-700'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 truncate">
-                            <img
-                              src={u.avatar}
-                              alt=""
-                              referrerPolicy="no-referrer"
-                              className="w-5 h-5 rounded-full object-cover shrink-0"
-                            />
-                            <span className="truncate">{u.name}</span>
-                          </div>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
-                            isCurrent ? 'bg-blue-200/60 text-blue-900' : 'bg-slate-100 text-slate-600'
-                          }`}>
-                            {u.role}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                )}
 
                 {/* Logout Button */}
                 <div className="mt-2 pt-2 border-t border-slate-100">

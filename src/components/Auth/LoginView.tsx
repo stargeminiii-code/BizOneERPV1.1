@@ -528,26 +528,16 @@ export const LoginView: React.FC<LoginViewProps> = ({
               </div>
             )}
 
-            {/* Portal Switcher Footer Link */}
-            {onSwitchPortal && (
+            {/* Portal Switcher Footer Link - Only show return link on Super Admin login page */}
+            {onSwitchPortal && portalMode === 'super-admin' && (
               <div className="mt-4 pt-3 border-t border-slate-100 text-center">
-                {portalMode === 'super-admin' ? (
-                  <button
-                    type="button"
-                    onClick={() => onSwitchPortal('erp')}
-                    className="text-[11px] font-semibold text-slate-500 hover:text-blue-600 transition-colors"
-                  >
-                    ← Quay lại Cổng Đăng nhập Khách hàng BizOne ERP
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onSwitchPortal('super-admin')}
-                    className="text-[11px] font-semibold text-slate-400 hover:text-slate-700 transition-colors"
-                  >
-                    Cổng Quản Trị Super Admin (Nhà Cung Cấp) →
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => onSwitchPortal('erp')}
+                  className="text-[11px] font-semibold text-slate-500 hover:text-blue-600 transition-colors cursor-pointer"
+                >
+                  ← Quay lại Cổng Đăng nhập Khách hàng BizOne ERP
+                </button>
               </div>
             )}
           </>

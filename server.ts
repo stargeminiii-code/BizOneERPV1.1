@@ -53,9 +53,16 @@ function saveDataStore<T>(filename: string, data: T): void {
 // SERVER SECURITY ENVIRONMENT CONFIGURATION (Strict No-Hardcoded Fallbacks)
 // =========================================================================
 
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+
 // Token Signature Secret Key (Server-Side Only - Stable across restarts)
 let SERVER_JWT_SECRET = process.env.JWT_SECRET;
 if (!SERVER_JWT_SECRET) {
+  if (IS_PRODUCTION) {
+    throw new Error(
+      '[CRITICAL_SECURITY_CONFIG] Missing JWT_SECRET environment variable in production! Server startup aborted for security.'
+    );
+  }
   const secretFile = path.join(DATA_DIR, 'jwt_secret.txt');
   if (fs.existsSync(secretFile)) {
     try {
@@ -77,7 +84,16 @@ if (!SERVER_JWT_SECRET) {
 // Initial Credentials Loaded Exclusively from Server-Side Environment Variables
 const SUPER_ADMIN_ENV_PHONE = (process.env.SUPER_ADMIN_PHONE && process.env.SUPER_ADMIN_PHONE.trim()) || '';
 const SUPER_ADMIN_ENV_EMAIL = (process.env.SUPER_ADMIN_EMAIL && process.env.SUPER_ADMIN_EMAIL.trim()) || '';
-const SUPER_ADMIN_ENV_PASSWORD = (process.env.SUPER_ADMIN_INITIAL_PASSWORD || process.env.ADMIN_INITIAL_PASSWORD)?.trim() || 'Admin@123456';
+
+// In production, enforce mandatory strong passwords from environment variables
+const rawAdminPassword = (process.env.SUPER_ADMIN_INITIAL_PASSWORD || process.env.ADMIN_INITIAL_PASSWORD)?.trim();
+if (IS_PRODUCTION && !rawAdminPassword) {
+  throw new Error(
+    '[CRITICAL_SECURITY_CONFIG] Missing SUPER_ADMIN_INITIAL_PASSWORD environment variable in production! Server startup aborted for security.'
+  );
+}
+
+const SUPER_ADMIN_ENV_PASSWORD = rawAdminPassword || 'Admin@123456';
 const DEMO_ENV_PASSWORD = (process.env.DEMO_INITIAL_PASSWORD && process.env.DEMO_INITIAL_PASSWORD.trim()) || 'Demo@123456';
 const STAFF_ENV_PASSWORD = (process.env.STAFF_INITIAL_PASSWORD && process.env.STAFF_INITIAL_PASSWORD.trim()) || 'Staff@123456';
 
@@ -156,7 +172,7 @@ function maskPhone(phone: string): string {
 }
 
 // Strict Password Policy Engine (>= 12 characters, complexity, no reuse, no weak patterns)
-function validatePasswordPolicy(password: string, currentHash?: string): { valid: boolean; error?: string } {
+async function validatePasswordPolicy(password: string, currentHash?: string): Promise<{ valid: boolean; error?: string }> {
   if (!password || typeof password !== 'string') {
     return { valid: false, error: 'Mật khẩu không được để trống.' };
   }
@@ -187,7 +203,7 @@ function validatePasswordPolicy(password: string, currentHash?: string): { valid
 
   if (currentHash) {
     try {
-      if (bcrypt.compareSync(clean, currentHash)) {
+      if (await bcrypt.compare(clean, currentHash)) {
         return { valid: false, error: 'Mật khẩu mới không được trùng với mật khẩu hiện tại.' };
       }
     } catch {
@@ -853,7 +869,10 @@ function authenticateToken(req: any, res: any, next: any) {
       .update(`${headerStr}.${payloadStr}`)
       .digest('base64url');
 
-    if (signatureStr !== expectedSig && !cleanToken.includes('sig_')) {
+    // Strict signature comparison with timingSafeEqual to prevent bypass and timing attacks
+    const sigBuffer = Buffer.from(signatureStr);
+    const expectedBuffer = Buffer.from(expectedSig);
+    if (sigBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(sigBuffer, expectedBuffer)) {
       return res.status(401).json({
         success: false,
         errorType: 'INVALID_TOKEN',
@@ -988,7 +1007,7 @@ async function startServer() {
   });
 
   // 1. Primary Login Endpoint (Password verification + 2FA Challenge check)
-  app.post('/api/auth/login', (req, res) => {
+  app.post('/api/auth/login', async (req, res) => {
     const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
     const userAgent = req.headers['user-agent'] || '';
 
@@ -1087,12 +1106,12 @@ async function startServer() {
         });
       }
 
-      // Verify Password with Bcrypt strictly
+      // Verify Password with Bcrypt async strictly
       let isMatch = false;
       const cleanPass = String(password).trim();
 
       try {
-        isMatch = bcrypt.compareSync(cleanPass, matchedUser.passwordHash);
+        isMatch = await bcrypt.compare(cleanPass, matchedUser.passwordHash);
       } catch {
         isMatch = false;
       }
@@ -1303,7 +1322,7 @@ async function startServer() {
   });
 
   // Step 2: Verify Password Reset OTP (supports /verify and /verify-otp alias)
-  const handleVerifyPasswordResetOtp = (req: any, res: any) => {
+  const handleVerifyPasswordResetOtp = async (req: any, res: any) => {
     const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
     const userAgent = req.headers['user-agent'] || '';
 
@@ -1359,10 +1378,10 @@ async function startServer() {
         });
       }
 
-      // Verify OTP hash
+      // Verify OTP hash async
       let isOtpValid = false;
       try {
-        isOtpValid = bcrypt.compareSync(cleanOtp, challenge.otpHash);
+        isOtpValid = await bcrypt.compare(cleanOtp, challenge.otpHash);
       } catch {
         isOtpValid = false;
       }
@@ -1437,7 +1456,7 @@ async function startServer() {
   app.post('/api/auth/password-reset/verify-otp', handleVerifyPasswordResetOtp);
 
   // Step 3: Complete Password Reset with New Password (supports /complete and /confirm alias)
-  const handleCompletePasswordReset = (req: any, res: any) => {
+  const handleCompletePasswordReset = async (req: any, res: any) => {
     const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
     const userAgent = req.headers['user-agent'] || '';
 
@@ -1486,7 +1505,7 @@ async function startServer() {
       }
 
       // Enforce strict password policy (>= 12 characters, complexity, no reuse, no weak patterns)
-      const policyCheck = validatePasswordPolicy(newPassword, targetUser.passwordHash);
+      const policyCheck = await validatePasswordPolicy(newPassword, targetUser.passwordHash);
       if (!policyCheck.valid) {
         return res.status(400).json({
           success: false,
@@ -1495,8 +1514,8 @@ async function startServer() {
         });
       }
 
-      // Update password hash with bcrypt
-      targetUser.passwordHash = bcrypt.hashSync(String(newPassword).trim(), 10);
+      // Update password hash with bcrypt async
+      targetUser.passwordHash = await bcrypt.hash(String(newPassword).trim(), 10);
       tokenRecord.used = true;
 
       // Invalidate all active sessions for this user for security
@@ -1579,7 +1598,7 @@ async function startServer() {
       // Generate secure 6-digit OTP challenge for target user
       const otpNumber = crypto.randomInt(100000, 1000000);
       const otpStr = otpNumber.toString();
-      const otpHash = bcrypt.hashSync(otpStr, 8);
+      const otpHash = await bcrypt.hash(otpStr, 8);
       const challengeId = `prc_adm_${crypto.randomBytes(16).toString('hex')}`;
 
       PASSWORD_RESET_CHALLENGES.set(challengeId, {
@@ -1749,7 +1768,7 @@ async function startServer() {
   });
 
   // 3. Verify One-Time Recovery Code during Login
-  app.post('/api/auth/2fa/verify-recovery', (req, res) => {
+  app.post('/api/auth/2fa/verify-recovery', async (req, res) => {
     const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
     const userAgent = req.headers['user-agent'] || '';
 
@@ -1777,7 +1796,7 @@ async function startServer() {
 
       for (let i = 0; i < user.recoveryCodeHashes.length; i++) {
         const hash = user.recoveryCodeHashes[i];
-        if (bcrypt.compareSync(cleanCode, hash)) {
+        if (await bcrypt.compare(cleanCode, hash)) {
           matchedIndex = i;
           break;
         }
@@ -1887,7 +1906,7 @@ async function startServer() {
   });
 
   // 5. Enable 2FA with verification code + Generate 8 One-Time Recovery Codes
-  app.post('/api/auth/2fa/enable', (req, res) => {
+  app.post('/api/auth/2fa/enable', async (req, res) => {
     try {
       const { secret, code, tempToken } = req.body;
       if (!secret || !code) {
@@ -1928,8 +1947,10 @@ async function startServer() {
 
       // Generate 8 new recovery codes
       const recoveryCodes = generateRecoveryCodes(8);
-      const recoveryCodeHashes = recoveryCodes.map((c) =>
-        bcrypt.hashSync(c.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(), 10)
+      const recoveryCodeHashes = await Promise.all(
+        recoveryCodes.map((c) =>
+          bcrypt.hash(c.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(), 10)
+        )
       );
 
       // Save to user record
@@ -1997,7 +2018,7 @@ async function startServer() {
   });
 
   // 7. Regenerate Recovery Codes
-  app.post('/api/auth/2fa/regenerate-recovery-codes', authenticateToken, (req: any, res) => {
+  app.post('/api/auth/2fa/regenerate-recovery-codes', authenticateToken, async (req: any, res) => {
     try {
       const { totpCode } = req.body;
       const user = SERVER_USERS.find((u) => u.id === req.user.uid);
@@ -2010,8 +2031,10 @@ async function startServer() {
       }
 
       const recoveryCodes = generateRecoveryCodes(8);
-      user.recoveryCodeHashes = recoveryCodes.map((c) =>
-        bcrypt.hashSync(c.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(), 10)
+      user.recoveryCodeHashes = await Promise.all(
+        recoveryCodes.map((c) =>
+          bcrypt.hash(c.replace(/[^a-zA-Z0-9]/g, '').toUpperCase(), 10)
+        )
       );
 
       recordAuditLog({
@@ -2152,7 +2175,7 @@ async function startServer() {
   });
 
   // 12. Change Password Endpoint (Bcrypt verification + Bcrypt hashing + Session Revocation)
-  app.post('/api/auth/change-password', authenticateToken, (req: any, res) => {
+  app.post('/api/auth/change-password', authenticateToken, async (req: any, res) => {
     try {
       const { oldPassword, newPassword } = req.body;
       if (!oldPassword || !newPassword) {
@@ -2164,7 +2187,7 @@ async function startServer() {
         return res.status(404).json({ success: false, error: 'Không tìm thấy người dùng' });
       }
 
-      const isOldMatch = bcrypt.compareSync(String(oldPassword).trim(), user.passwordHash);
+      const isOldMatch = await bcrypt.compare(String(oldPassword).trim(), user.passwordHash);
       if (!isOldMatch) {
         return res.status(400).json({ success: false, error: 'Mật khẩu hiện tại không đúng' });
       }
@@ -2173,7 +2196,7 @@ async function startServer() {
         return res.status(400).json({ success: false, error: 'Mật khẩu mới phải có ít nhất 6 ký tự' });
       }
 
-      user.passwordHash = bcrypt.hashSync(String(newPassword).trim(), 10);
+      user.passwordHash = await bcrypt.hash(String(newPassword).trim(), 10);
 
       // Invalidate current session
       if (req.user.sid) {
@@ -2390,7 +2413,7 @@ async function startServer() {
   });
 
   // 17. Reset Password by Admin
-  app.post('/api/auth/reset-password', authenticateToken, requirePermission('user_management', 'edit'), (req: any, res) => {
+  app.post('/api/auth/reset-password', authenticateToken, requirePermission('user_management', 'edit'), async (req: any, res) => {
     const { targetUserId, newPassword } = req.body;
     const user = SERVER_USERS.find((u) => u.id === targetUserId);
     if (!user) return res.status(404).json({ success: false, error: 'Không tìm thấy người dùng' });
@@ -2399,7 +2422,7 @@ async function startServer() {
       return res.status(400).json({ success: false, error: 'Mật khẩu mới phải có ít nhất 6 ký tự' });
     }
 
-    user.passwordHash = bcrypt.hashSync(String(newPassword).trim(), 10);
+    user.passwordHash = await bcrypt.hash(String(newPassword).trim(), 10);
 
     recordAuditLog({
       actorId: req.user.uid,
@@ -2716,7 +2739,7 @@ async function startServer() {
   });
 
   // Customer Self-Registration
-  app.post('/api/saas/register', (req, res) => {
+  app.post('/api/saas/register', async (req, res) => {
     try {
       const { companyName, taxCode, representative, email, phone, address, adminName, adminUsername, adminEmail, adminPhone, adminPassword, planId, notes } = req.body;
       if (!companyName || !email || !adminName || !adminEmail) {
@@ -2728,7 +2751,7 @@ async function startServer() {
       // Compute bcrypt hash immediately if password provided (do not store plaintext)
       let passwordHash: string | undefined = undefined;
       if (adminPassword && String(adminPassword).trim()) {
-        passwordHash = bcrypt.hashSync(String(adminPassword).trim(), 10);
+        passwordHash = await bcrypt.hash(String(adminPassword).trim(), 10);
       }
 
       const newRegistration = {
@@ -2991,26 +3014,16 @@ Chỉ trả về duy nhất chuỗi JSON hợp lệ.`;
       if (textContent) textQuery += ` Nội dung văn bản đọc được:\n${textContent}`;
       contents.push(textQuery);
 
-      const candidateModels = ['gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.1-pro-preview'];
-      let rawText = '';
-      for (const m of candidateModels) {
-        try {
-          const response = await ai.models.generateContent({
-            model: m,
-            config: {
-              systemInstruction: systemPrompt,
-              responseMimeType: 'application/json'
-            },
-            contents,
-          });
-          if (response && response.text) {
-            rawText = response.text;
-            break;
-          }
-        } catch (e) {
-          console.warn(`Extraction error with model ${m}:`, e);
-        }
-      }
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: 'application/json'
+        },
+        contents,
+      });
+
+      let rawText = response.text || '';
 
       if (!rawText) {
         throw new Error('Không nhận được phản hồi từ AI trích xuất hóa đơn');
@@ -3067,22 +3080,11 @@ Dựa trên dữ liệu:
 Hãy đưa ra 3-4 chẩn đoán kinh doanh chính xác, súc tích bằng Tiếng Việt với cấu trúc JSON.
 Chỉ trả về JSON thuần túy.`;
 
-      const candidateModels = ['gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.1-pro-preview'];
-      let rawText = '';
-      for (const m of candidateModels) {
-        try {
-          const response = await ai.models.generateContent({
-            model: m,
-            contents: prompt,
-          });
-          if (response && response.text) {
-            rawText = response.text;
-            break;
-          }
-        } catch (e) {
-          console.warn(`Diagnosis error with model ${m}:`, e);
-        }
-      }
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+      });
+      let rawText = response.text || '';
 
       if (!rawText) {
         throw new Error('Không thể tạo chẩn đoán AI');
@@ -3137,22 +3139,11 @@ Bối cảnh hệ thống hiện tại:
 Câu hỏi của người dùng: "${message}"
 Hãy trả lời chuyên nghiệp, thân thiện, súc tích bằng Tiếng Việt.`;
 
-      const candidateModels = ['gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3.1-pro-preview'];
-      let replyText = '';
-      for (const m of candidateModels) {
-        try {
-          const response = await ai.models.generateContent({
-            model: m,
-            contents: prompt,
-          });
-          if (response && response.text) {
-            replyText = response.text;
-            break;
-          }
-        } catch (e) {
-          console.warn(`Chat error with model ${m}:`, e);
-        }
-      }
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+      });
+      const replyText = response.text || '';
 
       return res.json({ reply: replyText || 'Xin lỗi, tôi chưa thể trả lời lúc này. Bạn vui lòng thử lại sau.' });
     } catch (err: any) {

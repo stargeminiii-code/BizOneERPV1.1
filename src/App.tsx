@@ -148,26 +148,47 @@ export default function App() {
   const [portal, setPortal] = useState<'super-admin' | 'erp'>(() => {
     if (typeof window !== 'undefined') {
       const path = window.location.pathname;
-      if (path.startsWith('/super-admin')) {
+      const search = window.location.search;
+      const hash = window.location.hash;
+
+      // Handle direct path /super-admin, GitHub Pages redirect /?/super-admin, search ?portal=super-admin, or hash #/super-admin
+      if (
+        path.startsWith('/super-admin') ||
+        search.includes('/super-admin') ||
+        search.includes('portal=super-admin') ||
+        hash.includes('super-admin')
+      ) {
         return 'super-admin';
       }
     }
     return 'erp';
   });
 
-  // Sync portal state with browser URL navigation (back/forward)
+  // Sync portal state with browser URL navigation (back/forward and hash change)
   useEffect(() => {
-    const handlePopState = () => {
+    const handleUrlChange = () => {
       const path = window.location.pathname;
-      if (path.startsWith('/super-admin')) {
+      const search = window.location.search;
+      const hash = window.location.hash;
+
+      if (
+        path.startsWith('/super-admin') ||
+        search.includes('/super-admin') ||
+        search.includes('portal=super-admin') ||
+        hash.includes('super-admin')
+      ) {
         setPortal('super-admin');
       } else {
         setPortal('erp');
       }
     };
 
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('hashchange', handleUrlChange);
+    };
   }, []);
 
   const switchPortal = (target: 'super-admin' | 'erp') => {
