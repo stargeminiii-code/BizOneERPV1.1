@@ -2179,6 +2179,40 @@ async function startServer() {
     });
   });
 
+  // 11b. Profile Update / Password Change Endpoint (PUT /api/auth/profile)
+  app.put('/api/auth/profile', authenticateToken, async (req: any, res) => {
+    try {
+      const { currentPassword, oldPassword, newPassword } = req.body;
+      const targetOld = currentPassword || oldPassword;
+
+      const user = SERVER_USERS.find((u) => u.id === req.user.uid);
+      if (!user) {
+        return res.status(404).json({ success: false, error: 'Không tìm thấy người dùng' });
+      }
+
+      if (newPassword) {
+        if (targetOld) {
+          const isOldMatch = await bcrypt.compare(String(targetOld).trim(), user.passwordHash);
+          if (!isOldMatch) {
+            return res.status(400).json({ success: false, error: 'Mật khẩu hiện tại không đúng' });
+          }
+        }
+        if (String(newPassword).trim().length < 6) {
+          return res.status(400).json({ success: false, error: 'Mật khẩu mới phải có ít nhất 6 ký tự' });
+        }
+        user.passwordHash = await bcrypt.hash(String(newPassword).trim(), 10);
+      }
+
+      return res.json({
+        success: true,
+        message: 'Cập nhật thông tin và mật khẩu tài khoản thành công.',
+        user: getSafeUser(user)
+      });
+    } catch (e: any) {
+      return res.status(500).json({ success: false, error: 'Lỗi cập nhật hồ sơ' });
+    }
+  });
+
   // 12. Change Password Endpoint (Bcrypt verification + Bcrypt hashing + Session Revocation)
   app.post('/api/auth/change-password', authenticateToken, async (req: any, res) => {
     try {

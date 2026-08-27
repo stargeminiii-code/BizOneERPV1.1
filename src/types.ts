@@ -1313,6 +1313,8 @@ export interface UserAccount {
   forcePasswordChange?: boolean;
   twoFactorEnabled?: boolean;
   twoFactorType?: 'totp' | 'sms' | 'email';
+  twoFactorSecret?: string;
+  twoFactorRecoveryCodes?: string[];
   failedLoginAttempts?: number;
   isLocked?: boolean;
   telegramUsername?: string;

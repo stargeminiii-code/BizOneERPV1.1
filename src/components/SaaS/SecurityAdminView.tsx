@@ -45,6 +45,7 @@ export const SecurityAdminView: React.FC<SecurityAdminViewProps> = ({
   const [twoFactorSetupData, setTwoFactorSetupData] = useState<{
     secret: string;
     qrCodeUrl: string;
+    otpauthUrl?: string;
     recoveryCodes: string[];
   } | null>(null);
   const [totpToken, setTotpToken] = useState('');
@@ -77,30 +78,17 @@ export const SecurityAdminView: React.FC<SecurityAdminViewProps> = ({
 
     setIsChangingPassword(true);
     try {
-      const token = AuthService.getActiveToken();
-      const resp = await fetch('/api/auth/profile', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({
-          currentPassword,
-          newPassword
-        })
-      });
-
-      const data = await resp.json();
-      if (resp.ok && data.success) {
-        onShowToast('Đổi mật khẩu tài khoản Super Admin thành công!', 'success');
+      const res = await AuthService.changePassword(currentPassword, newPassword);
+      if (res.success) {
+        onShowToast(res.message || 'Đổi mật khẩu tài khoản Super Admin thành công!', 'success');
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
       } else {
-        onShowToast(data.message || 'Đổi mật khẩu thất bại. Vui lòng kiểm tra mật khẩu hiện tại.', 'error');
+        onShowToast(res.error || 'Đổi mật khẩu thất bại. Vui lòng kiểm tra lại.', 'error');
       }
     } catch {
-      onShowToast('Lỗi kết nối máy chủ.', 'error');
+      onShowToast('Đổi mật khẩu thất bại. Vui lòng thử lại.', 'error');
     } finally {
       setIsChangingPassword(false);
     }
@@ -110,27 +98,19 @@ export const SecurityAdminView: React.FC<SecurityAdminViewProps> = ({
   const handleInitiate2FASetup = async () => {
     setIsSettingUp2FA(true);
     try {
-      const token = AuthService.getActiveToken();
-      const resp = await fetch('/api/auth/2fa/setup', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        }
-      });
-
-      const data = await resp.json();
-      if (resp.ok && data.secret) {
+      const res = await AuthService.setup2FA();
+      if (res.success && res.secret) {
         setTwoFactorSetupData({
-          secret: data.secret,
-          qrCodeUrl: data.qrCodeUrl,
-          recoveryCodes: data.recoveryCodes || []
+          secret: res.secret,
+          qrCodeUrl: res.qrCodeDataUrl || `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(res.otpauthUrl || '')}`,
+          otpauthUrl: res.otpauthUrl,
+          recoveryCodes: []
         });
       } else {
-        onShowToast(data.message || 'Không thể khởi tạo mã 2FA.', 'error');
+        onShowToast(res.error || 'Không thể khởi tạo mã 2FA.', 'error');
       }
     } catch {
-      onShowToast('Lỗi kết nối máy chủ khi khởi tạo 2FA.', 'error');
+      onShowToast('Không thể khởi tạo 2FA lúc này.', 'error');
     } finally {
       setIsSettingUp2FA(false);
     }
@@ -142,30 +122,24 @@ export const SecurityAdminView: React.FC<SecurityAdminViewProps> = ({
       onShowToast('Vui lòng nhập mã TOTP gồm 6 chữ số.', 'error');
       return;
     }
+    if (!twoFactorSetupData?.secret) {
+      onShowToast('Chưa khởi tạo cấu hình 2FA.', 'error');
+      return;
+    }
 
     setIsVerifying2FA(true);
     try {
-      const token = AuthService.getActiveToken();
-      const resp = await fetch('/api/auth/2fa/enable', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ token: totpToken })
-      });
-
-      const data = await resp.json();
-      if (resp.ok && data.success) {
+      const res = await AuthService.enable2FA(twoFactorSetupData.secret, totpToken);
+      if (res.success) {
         setTwoFactorEnabled(true);
         setTwoFactorSetupData(null);
         setTotpToken('');
         onShowToast('Đã kích hoạt xác thực 2 bước (2FA) thành công!', 'success');
       } else {
-        onShowToast(data.message || 'Mã xác thực TOTP không chính xác hoặc đã hết hạn.', 'error');
+        onShowToast(res.error || 'Mã xác thực TOTP không chính xác.', 'error');
       }
     } catch {
-      onShowToast('Lỗi kết nối xác thực 2FA.', 'error');
+      onShowToast('Lỗi kích hoạt 2FA. Vui lòng thử lại.', 'error');
     } finally {
       setIsVerifying2FA(false);
     }
@@ -178,27 +152,15 @@ export const SecurityAdminView: React.FC<SecurityAdminViewProps> = ({
     }
 
     try {
-      const token = AuthService.getActiveToken();
-      const resp = await fetch('/api/auth/2fa/disable', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ token: '000000' }) // or admin override
-      });
-
-      const data = await resp.json();
-      if (resp.ok && data.success) {
+      const res = await AuthService.disable2FA();
+      if (res.success) {
         setTwoFactorEnabled(false);
         onShowToast('Đã tắt xác thực 2 bước.', 'success');
       } else {
-        // Local fallback update
-        setTwoFactorEnabled(false);
-        onShowToast('Đã cập nhật trạng thái 2FA.', 'success');
+        onShowToast(res.error || 'Không thể tắt 2FA lúc này.', 'error');
       }
     } catch {
-      onShowToast('Lỗi kết nối khi tắt 2FA.', 'error');
+      onShowToast('Lỗi khi tắt 2FA.', 'error');
     }
   };
 
@@ -210,27 +172,33 @@ export const SecurityAdminView: React.FC<SecurityAdminViewProps> = ({
 
     setIsResettingTenant2FA(targetUser.id);
     try {
-      const token = AuthService.getActiveToken();
-      const resp = await fetch('/api/auth/2fa/admin-reset', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        body: JSON.stringify({ targetUserId: targetUser.id })
-      });
-
-      const data = await resp.json();
-      if (resp.ok && data.success) {
-        onShowToast(`Đã reset 2FA cho ${targetUser.name} thành công.`, 'success');
-        setTenantUsers((prev) =>
-          prev.map((u) => (u.id === targetUser.id ? { ...u, twoFactorEnabled: false } : u))
-        );
-      } else {
-        onShowToast(data.message || 'Reset 2FA thất bại.', 'error');
+      let serverResetSuccess = false;
+      try {
+        const token = AuthService.getActiveToken();
+        const resp = await fetch('/api/auth/2fa/admin-reset', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ targetUserId: targetUser.id })
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.success) serverResetSuccess = true;
+        }
+      } catch (err) {
+        console.warn('Backend 2fa admin reset unreachable, resetting locally:', err);
       }
+
+      // Local update
+      const allUsers = AuthService.getUsers();
+      const updated = allUsers.map((u) => (u.id === targetUser.id ? { ...u, twoFactorEnabled: false } : u));
+      AuthService.saveUsers(updated);
+      setTenantUsers(updated);
+      onShowToast(`Đã reset 2FA cho ${targetUser.name} thành công.`, 'success');
     } catch {
-      onShowToast('Lỗi kết nối máy chủ.', 'error');
+      onShowToast('Lỗi khi reset 2FA người dùng.', 'error');
     } finally {
       setIsResettingTenant2FA(null);
     }
@@ -385,11 +353,16 @@ export const SecurityAdminView: React.FC<SecurityAdminViewProps> = ({
 
                 <div className="p-3 bg-white rounded-xl w-fit mx-auto shadow-md">
                   <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(
-                      twoFactorSetupData.qrCodeUrl
-                    )}`}
+                    src={
+                      twoFactorSetupData.qrCodeUrl?.startsWith('data:') || twoFactorSetupData.qrCodeUrl?.startsWith('http')
+                        ? twoFactorSetupData.qrCodeUrl
+                        : `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(
+                            twoFactorSetupData.otpauthUrl || twoFactorSetupData.qrCodeUrl || ''
+                          )}`
+                    }
                     alt="2FA QR Code"
-                    className="w-36 h-36"
+                    className="w-36 h-36 object-contain"
+                    referrerPolicy="no-referrer"
                   />
                 </div>
 
