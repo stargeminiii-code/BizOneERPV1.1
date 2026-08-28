@@ -104,7 +104,7 @@ const otpDeliverySource = [
   '  const fromNumber = process.env.TWILIO_FROM_NUMBER;',
   '',
   "  if (provider !== 'twilio') {",
-  "    return { success: false, error: \"SMS provider '" + "' + provider + '" + "' chưa được hỗ trợ.\" };",
+  "    return { success: false, error: 'SMS provider chưa được hỗ trợ.' };",
   '  }',
   '',
   '  if (!accountSid || !authToken || !fromNumber) {',
@@ -144,6 +144,8 @@ const otpDeliverySource = [
 
 serverSource = serverSource.slice(0, emailStart) + otpDeliverySource + serverSource.slice(resetStart);
 
+// Make the reset endpoint report delivery failure instead of falsely telling
+// the customer that an OTP was sent when no provider is configured.
 const dispatchOld = [
   '      // Dispatch to email and SMS asynchronously',
   '      await Promise.allSettled([',
@@ -163,12 +165,12 @@ const dispatchNew = [
   '',
   '      if (!emailDelivery.success && !smsDelivery.success) {',
   '        PASSWORD_RESET_CHALLENGES.delete(challengeId);',
-  "        console.error('[PASSWORD_RESET] No OTP delivery channel succeeded.', {", 
+  "        console.error('[PASSWORD_RESET] No OTP delivery channel succeeded.', {",
   '          email: emailDelivery.error,',
   '          sms: smsDelivery.error',
   '        });',
   '        return res.status(503).json({',
-  "          success: false,",
+  '          success: false,',
   "          errorType: 'OTP_DELIVERY_UNAVAILABLE',",
   "          error: 'Dịch vụ gửi OTP hiện chưa được cấu hình. Vui lòng thử lại sau.'",
   '        });',
