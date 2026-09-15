@@ -1,6 +1,7 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
+import FadMigrationView from './components/FadMigrationView';
 import { LanguageProvider } from './i18n';
 import './index.css';
 
@@ -33,7 +34,6 @@ if (typeof window !== 'undefined' && API_BASE_URL) {
         requestInput = `${API_BASE_URL}${new URL(rawUrl).pathname}${new URL(rawUrl).search}`;
       }
     } catch {
-      // Preserve native fetch behavior for non-standard RequestInfo values.
       requestInput = input;
     }
 
@@ -41,10 +41,15 @@ if (typeof window !== 'undefined' && API_BASE_URL) {
   };
 }
 
+const isFadMigrationRoute =
+  typeof window !== 'undefined' &&
+  (window.location.pathname.endsWith('/fad-migration') ||
+    new URLSearchParams(window.location.search).get('view') === 'fad-migration');
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <LanguageProvider>
-      <App />
+      {isFadMigrationRoute ? <FadMigrationView /> : <App />}
     </LanguageProvider>
   </StrictMode>,
 );
