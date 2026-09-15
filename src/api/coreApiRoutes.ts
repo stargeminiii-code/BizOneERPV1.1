@@ -17,9 +17,7 @@ export function createCoreApiRouter(authenticateToken: any): Router {
     if (!userPayload || !userPayload.uid) return res.status(401).json({ success: false, error: 'Chưa đăng nhập' });
     const tenantId = userPayload.tenantId || userPayload.tenant || 'tenant-household-01';
     const context = UserService.buildSecurityContext(tenantId, userPayload.uid);
-    if (!context) {
-      return res.json({ success: true, context: { userId: userPayload.uid, tenantId, roleCode: userPayload.role || 'STAFF', dataScope: 'COMPANY_WIDE', permissions: ['*'], branchIds: ['BR01', 'BR02', 'BR03'], warehouseIds: ['WH01', 'WH02', 'WH03', 'WH04'] } });
-    }
+    if (!context) return res.json({ success: true, context: { userId: userPayload.uid, tenantId, roleCode: userPayload.role || 'STAFF', dataScope: 'COMPANY_WIDE', permissions: ['*'], branchIds: ['BR01', 'BR02', 'BR03'], warehouseIds: ['WH01', 'WH02', 'WH03', 'WH04'] } });
     return res.json({ success: true, context: { ...context, permissions: Array.from(context.permissions) } });
   });
 
@@ -86,7 +84,6 @@ export function createCoreApiRouter(authenticateToken: any): Router {
     return res.json({ success: true, logs: AuditLogService.getAuditHistory(tenantId, { module, entityType, limit }) });
   });
 
-  // FAD Migration: manifest-only API. Raw .hive files stay client-side.
   router.post('/fad-migrations/validate', authenticateToken, requireCorePermission('migration.fad.validate'), (req: AuthenticatedCoreRequest, res) => {
     const validation = FadMigrationService.validateManifest(req.body as FadMigrationManifestInput);
     return res.status(validation.valid ? 200 : 422).json({ success: validation.valid, validation });
@@ -112,6 +109,13 @@ export function createCoreApiRouter(authenticateToken: any): Router {
     const migrationId = req.query.migrationId as string | undefined;
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 500;
     return res.json({ success: true, records: FadMigrationService.getImportedRecords(tenantId, migrationId, limit) });
+  });
+
+  router.get('/fad-migrations/domain-records', authenticateToken, requireCorePermission('migration.fad.view'), (req: AuthenticatedCoreRequest, res) => {
+    const tenantId = req.user?.tenantId || req.user?.tenant || 'tenant-household-01';
+    const domain = String(req.query.domain || '');
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 500;
+    return res.json({ success: true, domain, records: FadMigrationService.getDomainRecords(tenantId, domain, limit) });
   });
 
   router.post('/tests/run', (req, res) => {
